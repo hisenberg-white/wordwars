@@ -1,0 +1,30 @@
+{
+  "name": "wordwars",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A competitive multiplayer fighting game where typing is the controller.",
+  "packageManager": "pnpm@11.14.0",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write \"**/*.{ts,tsx,js,json,md,css}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,json,md,css}\"",
+    "clean": "turbo run clean && rimraf node_modules"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.17.0",
+    "eslint": "^9.17.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.4.2",
+    "rimraf": "^6.0.1",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.18.1"
+  }
+}

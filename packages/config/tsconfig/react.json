@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "display": "WordWars React",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["vite/client"],
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "declaration": false,
+    "declarationMap": false,
+
+    // React props flow through third-party components constantly; this rule
+    // generates far more noise than signal on the UI side. It stays ON for
+    // the engine and server, where the precision actually earns its keep.
+    "exactOptionalPropertyTypes": false
+  }
+}
