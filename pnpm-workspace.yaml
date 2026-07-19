@@ -1,3 +1,8 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+
+# pnpm requires explicit opt-in for postinstall scripts. esbuild's postinstall
+# fetches its platform-native binary — without it, tsup and vitest cannot run.
+allowBuilds:
+  esbuild: true

@@ -28,7 +28,16 @@ picked up cold and executed without re-deriving decisions.
       → NOTE: wire compaction of `CombatEvent` (plan §7.2 tuple encoding) is
         deferred to 3.3, where it can be measured instead of guessed. It slots in
         behind a codec at one boundary; no call sites change.
-- [ ] 1.3 Server — Express + Socket.io + Zod env config + Pino logging + health check
+- [x] 1.3 Server — Express + Socket.io + Zod env config + Pino logging + health check
+      → `apps/server`: env validated at boot (fails loudly), pino (pretty in dev),
+        express + helmet + cors, `/health` (liveness) and `/health/ready` (readiness,
+        kept separate on purpose), typed Socket.io gateway, `validated()` wrapper so
+        no handler can skip Zod, per-socket token-bucket rate limiting applied as a
+        catch-all, graceful shutdown. Build via tsup (bundles shared). 6 tests pass.
+      → Every socket is assigned a provisional identity in `io.use()` before any
+        handler runs, so `SocketData` is never partially populated. Real guest
+        naming + token reclamation replaces it in 2.2.
+      → `PERSISTENCE=none` is the documented no-Docker dev mode.
 - [ ] 1.4 Web — Vite + React + Tailwind shell with dark game theme + design tokens
 - [ ] 1.5 Socket round-trip proven end to end (client connects, echoes, shows status)
 - [ ] 1.6 Docker compose (Postgres + Redis) + Prisma schema v1 — *written, optional in dev*
