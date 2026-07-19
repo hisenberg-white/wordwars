@@ -201,7 +201,7 @@ export function createGatewayWithContext(
       (s) => online.add(s),
     );
     registerFriendHandlers(socket, ctx, online);
-    registerMatchmakingHandlers(socket, ctx);
+    registerMatchmakingHandlers(socket, ctx, io);
     registerRoomHandlers(socket, ctx, io);
     registerMatchHandlers(socket, ctx, io);
 

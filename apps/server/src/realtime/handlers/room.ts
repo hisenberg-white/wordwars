@@ -20,6 +20,8 @@ import { logger } from '../../logger.js';
 import { hashPassword, verifyPassword } from '../../services/password.js';
 import type { LiveRoom } from '../../rooms/RoomRegistry.js';
 import { startCountdown } from '../../rooms/countdown.js';
+import { leaveCurrentRoom as leaveRoom } from '../../rooms/leaveRoom.js';
+import { systemMessage } from '../../rooms/systemMessage.js';
 import type { RealtimeContext } from '../context.js';
 import type { GameServer, GameSocket } from '../gateway.js';
 import { validated } from '../validate.js';
@@ -40,33 +42,8 @@ export function registerRoomHandlers(
     return state;
   };
 
-  /**
-   * Detaches the player from whatever room they are in.
-   *
-   * Called before any join. Clicking a friend's invite link while sitting in
-   * another room should move you, not fail — a dead-end error there would be
-   * technically defensible and genuinely annoying.
-   */
-  const leaveCurrentRoom = (): void => {
-    const roomId = socket.data.roomId;
-    if (!roomId) return;
-
-    const room = ctx.rooms.get(asRoomId(roomId));
-    socket.data.roomId = null;
-    void socket.leave(roomId);
-
-    if (!room) return;
-
-    const remaining = ctx.rooms.removeMember(room, socket.data.playerId);
-    if (!remaining) return;
-
-    // Losing a player mid-count means there is no longer a fight to start.
-    if (!ctx.rooms.canStart(remaining) && ctx.rooms.abortCountdown(remaining)) {
-      systemMessage(io, remaining, 'Countdown stopped — a player left');
-    }
-
-    broadcast(remaining);
-  };
+  /** Shared with matchmaking, so the two cannot drift. See rooms/leaveRoom. */
+  const leaveCurrentRoom = (): void => leaveRoom(socket, ctx, io);
 
   socket.on(
     'room:create',
@@ -387,17 +364,6 @@ function definedOnly<T extends object>(patch: T): DefinedPartial<T> {
   }
 
   return result as DefinedPartial<T>;
-}
-
-function systemMessage(io: GameServer, room: LiveRoom, text: string): void {
-  io.to(room.id).emit('room:chat', {
-    id: randomUUID(),
-    playerId: null,
-    nickname: 'System',
-    text,
-    at: Date.now(),
-    system: true,
-  });
 }
 
 function findSocketByPlayer(io: GameServer, playerId: string): GameSocket | null {
