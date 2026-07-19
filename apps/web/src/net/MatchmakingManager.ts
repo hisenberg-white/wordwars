@@ -1,5 +1,6 @@
 import type { CharacterId, GameMode, PlayerIdentity } from '@wordwars/shared';
 import { connection } from './ConnectionManager';
+import { roomManager } from './RoomManager';
 
 export type SearchStatus = 'idle' | 'searching' | 'found' | 'error';
 
@@ -60,6 +61,14 @@ class MatchmakingManager {
 
   search(mode: GameMode, characterId: CharacterId): void {
     this.bind();
+
+    /*
+     * Quick match lands the player in a room they never asked for, so the room
+     * listeners have to exist BEFORE pairing — by the time `mm:found` arrives
+     * the countdown is 1.8 seconds away, and a listener attached after that is
+     * a listener that missed the fight.
+     */
+    roomManager.listen();
 
     const socket = connection.socket;
     if (!socket?.connected) {

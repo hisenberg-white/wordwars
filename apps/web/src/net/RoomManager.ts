@@ -5,7 +5,7 @@ import type {
   RoomState,
   SocketErrorCode,
 } from '@wordwars/shared';
-import { connection } from './ConnectionManager';
+import { connection, type ClientSocket } from './ConnectionManager';
 
 export type RoomStatus = 'idle' | 'joining' | 'in-room' | 'error';
 
@@ -37,12 +37,33 @@ const IDLE: RoomSnapshot = {
 class RoomManager {
   private readonly listeners = new Set<() => void>();
   private snapshot: RoomSnapshot = IDLE;
-  private bound = false;
+  /**
+   * The socket these listeners are attached to.
+   *
+   * Tracked per-socket rather than as a boolean: a reconnect hands us a NEW
+   * socket, and a `bound = true` flag would leave the listeners attached to the
+   * dead one and silently never rebind — the player would come back from a
+   * network blip to a lobby that no longer updates.
+   */
+  private boundSocket: ClientSocket | null = null;
 
-  private bind(): void {
+  /**
+   * Starts listening for room state.
+   *
+   * **Public, and called before the client has asked for anything.** This used
+   * to be private and reached only from `create()` and `join()`, on the
+   * assumption that you are only ever in a room you asked to be in. Quick match
+   * breaks that assumption completely: the SERVER puts you in a room after
+   * pairing, and the client never calls either method — so `room:state` had no
+   * listener, and the player sat on "preparing the arena" forever while the
+   * countdown, the match start and the whole fight happened without them.
+   *
+   * Anything that can put a player in a room must call this first.
+   */
+  listen(): void {
     const socket = connection.socket;
-    if (!socket || this.bound) return;
-    this.bound = true;
+    if (!socket || this.boundSocket === socket) return;
+    this.boundSocket = socket;
 
     // The server is authoritative about room contents; we never mutate the
     // roster locally. Every membership change arrives as a full snapshot,
@@ -89,7 +110,7 @@ class RoomManager {
   }
 
   create(settings: RoomSettings, password?: string): Promise<RoomState | null> {
-    this.bind();
+    this.listen();
     const socket = connection.socket;
     if (!socket?.connected) {
       this.publish({ status: 'error', error: 'INTERNAL' });
@@ -140,7 +161,7 @@ class RoomManager {
   }
 
   join(code: string, password?: string): Promise<RoomState | null> {
-    this.bind();
+    this.listen();
     const socket = connection.socket;
     if (!socket?.connected) {
       this.publish({ status: 'error', error: 'INTERNAL' });
