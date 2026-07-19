@@ -352,6 +352,92 @@ describe('finishing', () => {
   });
 });
 
+describe('pausing', () => {
+  beforeEach(() => start());
+
+  it('stops accepting words while paused', () => {
+    match.pause();
+    submit(ALICE, 0);
+    vi.advanceTimersByTime(50);
+
+    expect(captured.events.filter((e) => e.type === 'attack')).toHaveLength(0);
+  });
+
+  it('resumes accepting words afterwards', () => {
+    match.pause();
+    match.resume();
+    submit(ALICE, 0);
+    vi.advanceTimersByTime(50);
+
+    expect(captured.events.filter((e) => e.type === 'attack')).toHaveLength(1);
+  });
+
+  /** A frozen room does not need ten snapshots a second describing nothing. */
+  it('stops broadcasting while paused', () => {
+    vi.advanceTimersByTime(300);
+    const before = captured.snapshots.length;
+
+    match.pause();
+    vi.advanceTimersByTime(2_000);
+
+    expect(captured.snapshots.length).toBe(before);
+  });
+
+  it('flushes pending events before freezing, rather than stranding them', () => {
+    submit(ALICE, 0);
+    expect(captured.events).toHaveLength(0); // still inside the 33ms window
+
+    match.pause();
+
+    expect(captured.events.length).toBeGreaterThan(0);
+  });
+
+  /**
+   * The subtle one. Without pause-correction a twenty-second disconnect
+   * advances the match clock by twenty seconds — pushing the fight toward
+   * sudden death and corrupting every WPM figure on the results screen,
+   * because of something neither player did.
+   */
+  it('does not let paused time advance the match clock', () => {
+    submit(ALICE, 0);
+    vi.advanceTimersByTime(1_000);
+
+    match.pause();
+    vi.advanceTimersByTime(20_000);
+    match.resume();
+
+    submit(ALICE, 1);
+    match.abort('forfeit', ALICE);
+
+    // ~1s of real play, not ~21s.
+    expect(captured.result!.durationMs).toBeLessThan(3_000);
+  });
+
+  it('reports whether it is paused', () => {
+    expect(match.isPaused).toBe(false);
+    match.pause();
+    expect(match.isPaused).toBe(true);
+    match.resume();
+    expect(match.isPaused).toBe(false);
+  });
+
+  it('ignores a double pause or a resume that was never paused', () => {
+    match.pause();
+    match.pause();
+    match.resume();
+    match.resume();
+
+    expect(match.isPaused).toBe(false);
+  });
+
+  it('cannot be paused once finished', () => {
+    match.abort('forfeit', BOB);
+    match.pause();
+
+    expect(match.isPaused).toBe(false);
+  });
+});
+
 describe('reconnect support', () => {
   it('can reproduce every sentence issued so far from the seed alone', () => {
     start();

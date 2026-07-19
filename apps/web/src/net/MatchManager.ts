@@ -27,9 +27,17 @@ export interface MatchSnapshotView {
   readonly config: MatchConfig | null;
   readonly fighters: readonly MatchFighter[];
   readonly result: MatchResult | null;
+  /** Set while an opponent is disconnected and the fight is on hold (§7.3). */
+  readonly pausedBy: { nickname: string; resumeDeadline: number } | null;
 }
 
-const IDLE: MatchSnapshotView = { status: 'idle', config: null, fighters: [], result: null };
+const IDLE: MatchSnapshotView = {
+  status: 'idle',
+  config: null,
+  fighters: [],
+  result: null,
+  pausedBy: null,
+};
 
 type EventListener = (events: readonly CombatEvent[], predicted: boolean) => void;
 type StateListener = (snapshot: MatchSnapshot) => void;
@@ -104,10 +112,31 @@ class MatchManager {
       for (const listener of this.stateListeners) listener(snapshot);
     });
 
+    socket.on('match:paused', ({ nickname, resumeDeadline }) => {
+      // Input is detached, not merely ignored: leaving it live would let the
+      // player build a buffer of words that all land the instant play resumes.
+      this.input.detach();
+      this.publish({ pausedBy: { nickname, resumeDeadline } });
+    });
+
+    socket.on('match:resumed', ({ snapshot, sentences }) => {
+      this.input.reset();
+      for (const sentence of sentences) this.input.pushSentence(sentence.words);
+
+      // Resume from where the SERVER says we got to, not from the start of the
+      // text we were just re-sent.
+      const self = snapshot.fighters.find((f) => f.playerId === this.selfId);
+      if (self) this.input.seek(self.wordIndex);
+
+      this.input.attach(document, performance.now());
+      gameBus.emit('match:snapshot', snapshot);
+      this.publish({ pausedBy: null });
+    });
+
     socket.on('match:end', (result) => {
       this.input.detach();
       gameBus.emit('match:over', result);
-      this.publish({ status: 'ended', result });
+      this.publish({ status: 'ended', result, pausedBy: null });
     });
 
     // A committed word fires locally first, then goes to the server.

@@ -77,8 +77,16 @@ export interface ServerToClientEvents {
   'match:end': (p: MatchResult) => void;
 
   /** A player dropped; the match is paused pending their return (plan §7.3). */
-  'match:paused': (p: { playerId: PlayerId; resumeDeadline: number }) => void;
-  'match:resumed': (p: { snapshot: MatchSnapshot; sentence: Sentence }) => void;
+  'match:paused': (p: { playerId: PlayerId; nickname: string; resumeDeadline: number }) => void;
+  /**
+   * Play continues.
+   *
+   * Carries EVERY sentence issued so far, not just the current one: a
+   * reconnecting client has an empty input engine and needs the whole text to
+   * rebuild its word indices. The sentences are regenerated from the match
+   * seed, so the server stores none of it (see 3.3).
+   */
+  'match:resumed': (p: { snapshot: MatchSnapshot; sentences: readonly Sentence[] }) => void;
 
   error: (p: SocketError) => void;
 }

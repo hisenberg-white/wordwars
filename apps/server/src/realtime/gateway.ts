@@ -20,6 +20,7 @@ import { registerMatchmakingHandlers } from './handlers/matchmaking.js';
 import { registerRoomHandlers } from './handlers/room.js';
 import { startCountdown } from '../rooms/countdown.js';
 import { startMatchForRoom } from '../match/startMatch.js';
+import { handleMatchDisconnect, handleReconnect } from '../match/presence.js';
 import { RateLimiter, ruleFor } from './rateLimit.js';
 import { validated } from './validate.js';
 
@@ -176,7 +177,9 @@ export function createGatewayWithContext(httpServer: HttpServer): Gateway {
       socket.emit('error', { code: 'RATE_LIMITED', detail: String(event) });
     });
 
-    registerGuestHandlers(socket);
+    // The reattach hook fires once a restored token proves this socket
+    // belongs to a match already in progress.
+    registerGuestHandlers(socket, (s) => handleReconnect(io, ctx, s));
     registerMatchmakingHandlers(socket, ctx);
     registerRoomHandlers(socket, ctx, io);
     registerMatchHandlers(socket, ctx, io);
@@ -219,20 +222,20 @@ export function createGatewayWithContext(httpServer: HttpServer): Gateway {
       ctx.matchmaking.leave(socket.data.playerId);
 
       /*
-       * Dropping mid-fight awards the win rather than freezing the match.
+       * Dropping mid-fight PAUSES the match for a grace period (plan §7.3).
        *
-       * The 20-second reconnect grace from plan §7.3 lands in step 3.10; until
-       * then an immediate forfeit is strictly better than the alternative,
-       * which is the surviving player typing into a match that will never end.
+       * An instant forfeit punishes the wrong person about half the time: the
+       * player whose train went into a tunnel did not choose to quit, and the
+       * one left standing did not earn the win.
        */
-      const liveMatch = ctx.matches.forPlayer(socket.data.playerId);
-      if (liveMatch && !liveMatch.isFinished) {
-        const opponent = liveMatch.fighters.find((f) => f.playerId !== socket.data.playerId);
-        liveMatch.abort('disconnect', opponent?.playerId ?? null);
-      }
+      const inMatch = ctx.matches.forPlayer(socket.data.playerId) !== null;
+      if (inMatch) handleMatchDisconnect(io, ctx, socket);
 
       const roomId = socket.data.roomId;
-      if (roomId) {
+      // A player who dropped mid-match keeps their seat — `handleMatchDisconnect`
+      // marked them absent, and removing them here would destroy the room they
+      // are trying to come back to.
+      if (roomId && !inMatch) {
         const room = ctx.rooms.get(asRoomId(roomId));
         if (room) {
           const remaining = ctx.rooms.removeMember(room, socket.data.playerId);

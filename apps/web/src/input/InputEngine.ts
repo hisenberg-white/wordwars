@@ -129,6 +129,21 @@ export class InputEngine {
   }
 
   /**
+   * Jumps the cursor to a word index.
+   *
+   * Used only on reconnect: the server is authoritative about how far a player
+   * got, and a returning client must resume from THERE rather than from the
+   * start of the text it was just re-sent.
+   */
+  seek(wordIndex: number): void {
+    this.wordIndex = Math.max(0, Math.min(wordIndex, this.words.length));
+    this.typed = '';
+    this.dirty = false;
+    this.keyTimes = [];
+    this.emitProgress();
+  }
+
+  /**
    * The slice of text around the cursor, for the on-screen band.
    *
    * A window rather than the whole list: the player can only read a line or

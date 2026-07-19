@@ -678,7 +678,49 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
       both clients agree on the winner, stats populate, room enters post-match, a
       one-sided vote is visible to the opponent, mutual agreement starts a fresh
       countdown, votes clear, players auto-ready, and a SECOND match actually begins.
-- [ ] 3.10 Reconnect + forfeit
+- [x] 3.10 Reconnect + forfeit
+      → **A disconnect PAUSES the fight for 20s instead of ending it.** An instant
+      forfeit punishes the wrong person about half the time: the player whose train
+      went into a tunnel did not choose to quit, and the one left standing did not
+      earn the win. 20s survives a WiFi hiccup, a laptop lid or a phone switching to
+      mobile data; past ~30s waiting stops feeling like suspense and starts feeling
+      like being stood up.
+      → **This is the payoff for making guest sessions stateless and signed in 2.2.**
+      A reconnecting socket arrives anonymous — the token is the only thing proving
+      it belongs to a match in progress. `guest:init` now fires a reattach hook once
+      an identity is RESTORED (not when one is issued).
+      → The dropped player KEEPS their seat, marked absent rather than removed.
+      Removing them would destroy the room they are trying to return to. Required a
+      `byPlayer` index on RoomRegistry so a new socket can find its way back.
+      → **Paused time is subtracted from the match clock.** Without it a 20s
+      disconnect advances elapsed by 20s — pushing the fight toward sudden death and
+      corrupting every WPM figure on the results screen, for something neither
+      player did. `submitWord` uses the corrected clock too, so the first word back
+      does not show a 20-second gap and tank the returning player's tempo bonus.
+      → Timers STOP while paused rather than the match merely ignoring input: a
+      frozen room does not need ten snapshots a second describing nothing, and
+      leaving the tick loop running would let Rage engage during a pause.
+      → Pending events are flushed BEFORE freezing, so the last hits before the drop
+      are not stranded in the buffer for the whole pause.
+      → Words submitted during a pause are dropped. The surviving player must not
+      keep landing hits on an opponent who cannot fight back — and client-side the
+      input is DETACHED, not just ignored, or they would build a buffer of words
+      that all land the instant play resumes.
+      → `match:resumed` carries EVERY sentence issued so far (regenerated from the
+      seed — the server stores none of it) plus the authoritative snapshot. The
+      client rebuilds its input engine and `seek()`s to the word index the SERVER
+      says it reached, not the start of the text it was just re-sent.
+      → `PausedOverlay` counts down against `serverNow()`. The countdown is the
+      point: without it the survivor stares at a frozen fight with no idea whether
+      to wait or leave — and a player who does not know what is happening leaves.
+      → 183 server tests. **Live-verified 13 checks:** survivor notified, player
+      named, deadline given, NO instant forfeit, typing into a pause lands nothing,
+      identity restored from token, `match:resumed` delivered with 3 sentences and a
+      full snapshot, word position restored (wordIndex=3), HP restored (3734), and
+      play genuinely continues afterwards.
+
+**→ PHASE 3 IS CODE-COMPLETE. Only the 3.11 playtest gate remains.**
+
 - [ ] 3.11 **GATE: 20 internal playtest matches. Tune §5.2 before Phase 4.**
 
 ### Phase 4 — Progression

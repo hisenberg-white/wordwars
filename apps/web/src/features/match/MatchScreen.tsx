@@ -4,6 +4,7 @@ import { matchManager } from '@/net/MatchManager';
 import { useIdentity } from '@/net/useConnection';
 import { setAppPhase } from '@/store/appPhase';
 import { MatchHud } from './hud/MatchHud';
+import { PausedOverlay } from './PausedOverlay';
 import { ResultsScreen } from './results/ResultsScreen';
 
 /**
@@ -37,6 +38,15 @@ export function MatchScreen() {
     <div className="relative h-screen w-full overflow-hidden bg-void">
       {/* z-0: the arena. Mounted once, never re-rendered. */}
       <GameCanvas className="absolute inset-0 grid place-items-center" />
+
+      {/* z-30: the opponent dropped. Sits above the HUD but below results,
+          since a match that ends during a pause should show the verdict. */}
+      {view.pausedBy && view.status === 'live' && (
+        <PausedOverlay
+          nickname={view.pausedBy.nickname}
+          resumeDeadline={view.pausedBy.resumeDeadline}
+        />
+      )}
 
       {/* z-20: results. Deliberately layered OVER the still-running arena
           rather than replacing it, so the KO animation and the victory pose

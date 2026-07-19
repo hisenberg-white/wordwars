@@ -105,6 +105,17 @@ export class ServerMatch {
   private startedAt = 0;
   private finished = false;
 
+  /** Set while a player is disconnected and the fight is on hold (§7.3). */
+  private pausedAt: number | null = null;
+  /**
+   * Total time spent paused, subtracted from elapsed.
+   *
+   * Without this a twenty-second disconnect would advance the match clock by
+   * twenty seconds — pushing a fight toward sudden death, and corrupting every
+   * WPM figure on the results screen, because of something neither player did.
+   */
+  private pausedTotalMs = 0;
+
   constructor(options: ServerMatchOptions, sink: MatchSink) {
     this.options = options;
     this.sink = sink;
@@ -153,9 +164,7 @@ export class ServerMatch {
     // catches up, even at superhuman speed.
     this.streamAhead();
 
-    this.eventTimer = setInterval(() => this.flushEvents(), EVENT_FLUSH_MS);
-    this.snapshotTimer = setInterval(() => this.sendSnapshot(), SNAPSHOT_MS);
-    this.tickTimer = setInterval(() => this.advance(), TICK_MS);
+    this.startTimers();
 
     logger.info(
       { matchId: this.matchId, arena: this.options.arenaId, seed: this.config.seed },
@@ -173,6 +182,9 @@ export class ServerMatch {
    */
   submitWord(playerId: PlayerId, payload: MatchWordPayload): void {
     if (this.finished) return;
+    // Words arriving during a pause are dropped. The surviving player must not
+    // be able to keep landing hits on an opponent who cannot fight back.
+    if (this.pausedAt !== null) return;
     if (payload.matchId !== this.matchId) return;
 
     const word = this.wordAt(payload.wordIndex);
@@ -191,7 +203,10 @@ export class ServerMatch {
      * The client's reported timings are still collected, but exclusively for
      * cheat heuristics — never for damage.
      */
-    const atMs = Date.now() - this.startedAt;
+    // Pause-corrected, not raw wall time: after a twenty-second disconnect the
+    // first word back would otherwise show a twenty-second gap, tanking the
+    // returning player's tempo bonus for something that was not their doing.
+    const atMs = this.elapsedMs();
 
     const flag = this.monitors.get(playerId)?.record(atMs, word.length, payload.timings);
 
@@ -271,7 +286,39 @@ export class ServerMatch {
   // ---- Internals --------------------------------------------------------
 
   private elapsedMs(): number {
-    return this.startedAt === 0 ? 0 : Date.now() - this.startedAt;
+    if (this.startedAt === 0) return 0;
+
+    const pausedNow = this.pausedAt === null ? 0 : Date.now() - this.pausedAt;
+    return Date.now() - this.startedAt - this.pausedTotalMs - pausedNow;
+  }
+
+  get isPaused(): boolean {
+    return this.pausedAt !== null;
+  }
+
+  /**
+   * Halts the fight while a player is away.
+   *
+   * Timers stop rather than the match simply ignoring input: leaving the tick
+   * loop running would keep broadcasting snapshots to a room where nothing is
+   * happening, and would let sudden death engage during a pause.
+   */
+  pause(): void {
+    if (this.finished || this.pausedAt !== null) return;
+
+    this.pausedAt = Date.now();
+    this.stopTimers();
+    // Flush first, so the last events before the drop are not stranded in the
+    // buffer for the whole pause.
+    this.flushEvents();
+  }
+
+  resume(): void {
+    if (this.finished || this.pausedAt === null) return;
+
+    this.pausedTotalMs += Date.now() - this.pausedAt;
+    this.pausedAt = null;
+    this.startTimers();
   }
 
   private wordAt(globalIndex: number): string | null {
@@ -368,6 +415,13 @@ export class ServerMatch {
       maxCombo: fighter.maxCombo,
       ultimatesUsed: fighter.ultimatesUsed,
     };
+  }
+
+  private startTimers(): void {
+    this.stopTimers();
+    this.eventTimer = setInterval(() => this.flushEvents(), EVENT_FLUSH_MS);
+    this.snapshotTimer = setInterval(() => this.sendSnapshot(), SNAPSHOT_MS);
+    this.tickTimer = setInterval(() => this.advance(), TICK_MS);
   }
 
   private stopTimers(): void {

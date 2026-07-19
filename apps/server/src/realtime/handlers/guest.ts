@@ -28,7 +28,10 @@ import { validated } from '../validate.js';
  * payload — a rename that did not reissue would leave the client holding a
  * token that reverts the name on next connect.
  */
-export function registerGuestHandlers(socket: GameSocket): void {
+export function registerGuestHandlers(
+  socket: GameSocket,
+  reattach: (socket: GameSocket) => void = () => {},
+): void {
   const log = logger.child({ socketId: socket.id });
 
   socket.on(
@@ -82,6 +85,16 @@ export function registerGuestHandlers(socket: GameSocket): void {
       // screens subscribe to this rather than threading the ack result through.
       socket.emit('session:issued', result);
       ack(ackOk(result));
+
+      /*
+       * Only NOW can a reconnect be recognised.
+       *
+       * The socket arrived anonymous; the signed token is what proves it
+       * belongs to a match already in progress. This is the payoff for making
+       * guest sessions stateless and signed back in 2.2 — without it a dropped
+       * player would have no way to prove who they were.
+       */
+      if (restored) reattach(socket);
     }),
   );
 }

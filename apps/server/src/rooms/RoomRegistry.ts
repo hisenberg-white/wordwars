@@ -75,6 +75,12 @@ export interface CreateRoomOptions {
 export class RoomRegistry {
   private readonly rooms = new Map<RoomId, LiveRoom>();
   private readonly byCode = new Map<RoomCode, RoomId>();
+  /**
+   * Player to room, maintained so a RECONNECTING socket can be reunited with
+   * its match. The new socket knows nothing — only the restored identity — so
+   * without this index a dropped player could never find their way back.
+   */
+  private readonly byPlayer = new Map<PlayerId, RoomId>();
 
   create(options: CreateRoomOptions = {}): LiveRoom {
     const id = asRoomId(randomUUID());
@@ -139,6 +145,8 @@ export class RoomRegistry {
       wantsRematch: false,
     });
 
+    this.byPlayer.set(identity.playerId, room.id);
+
     if (!room.hostId || !room.members.has(room.hostId)) {
       room.hostId = identity.playerId;
     }
@@ -152,6 +160,7 @@ export class RoomRegistry {
    */
   removeMember(room: LiveRoom, playerId: PlayerId): LiveRoom | null {
     room.members.delete(playerId);
+    this.byPlayer.delete(playerId);
 
     if (room.members.size === 0) {
       this.destroy(room);
@@ -240,6 +249,28 @@ export class RoomRegistry {
     return players.length >= 2 && players.every((m) => m.isReady && m.connected);
   }
 
+  /** The room a player belongs to, including while they are disconnected. */
+  forPlayer(playerId: PlayerId): LiveRoom | null {
+    const roomId = this.byPlayer.get(playerId);
+    return roomId ? (this.rooms.get(roomId) ?? null) : null;
+  }
+
+  /**
+   * Marks a player present or absent WITHOUT removing them.
+   *
+   * The distinction matters enormously mid-match: removing a dropped player
+   * destroys their seat, their character and their place in the room, so there
+   * is nothing to come back to. Marking them absent keeps the chair warm for
+   * the twenty seconds they have to return.
+   */
+  setConnected(room: LiveRoom, playerId: PlayerId, connected: boolean): boolean {
+    const member = room.members.get(playerId);
+    if (!member || member.connected === connected) return false;
+
+    member.connected = connected;
+    return true;
+  }
+
   destroy(room: LiveRoom): void {
     // A pending timer would fire against a room nobody is in and keep the
     // object alive until it did.
@@ -248,6 +279,7 @@ export class RoomRegistry {
 
     this.rooms.delete(room.id);
     this.byCode.delete(room.code);
+    for (const playerId of room.members.keys()) this.byPlayer.delete(playerId);
     logger.debug({ roomId: room.id, code: room.code }, 'Room destroyed');
   }
 
