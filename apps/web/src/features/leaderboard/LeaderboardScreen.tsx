@@ -3,8 +3,7 @@ import { TopNav } from '@/features/landing/components/TopNav';
 import { Panel, PanelLabel } from '@/ui/Panel';
 import { cn } from '@/ui/cn';
 import { useAuth } from '@/net/useConnection';
-
-const API = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+import { API_BASE } from '@/net/serverUrl';
 
 /**
  * The leaderboard.
@@ -62,7 +61,7 @@ export function LeaderboardScreen() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    void fetch(`${API}/api/leaderboard/categories`)
+    void fetch(`${API_BASE}/api/leaderboard/categories`)
       .then((r) => (r.ok ? r.json() : null))
       .then((body: { categories: Category[] } | null) => setCategories(body?.categories ?? []))
       .catch(() => setCategories([]));
@@ -71,7 +70,7 @@ export function LeaderboardScreen() {
   useEffect(() => {
     setLoading(true);
 
-    void fetch(`${API}/api/leaderboard?category=${category}&period=${period}`)
+    void fetch(`${API_BASE}/api/leaderboard?category=${category}&period=${period}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((body: Board | null) => setBoard(body))
       .catch(() => setBoard(null))

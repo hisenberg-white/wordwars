@@ -1,8 +1,8 @@
 import type { AuthenticatedUser } from '@wordwars/shared';
 import { identity } from './IdentityManager';
+import { API_BASE } from './serverUrl';
 
 const STORAGE_KEY = 'wordwars.account';
-const API = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
 
 export interface AuthSnapshot {
   readonly user: AuthenticatedUser | null;
@@ -39,7 +39,7 @@ class AuthManager {
     }
 
     try {
-      const response = await fetch(`${API}/api/auth/me`, {
+      const response = await fetch(`${API_BASE}/api/auth/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -76,7 +76,7 @@ class AuthManager {
     this.publish({ status: 'working', error: null });
 
     try {
-      const response = await fetch(`${API}${path}`, {
+      const response = await fetch(`${API_BASE}${path}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),

@@ -45,10 +45,14 @@ class ConnectionManager {
     clockOffset: 0,
   };
 
-  connect(url: string): ClientSocket {
+  /**
+   * @param url Absolute server URL, or `undefined` for this page's own origin
+   *   — which is what the dev proxy and any reverse proxy deployment want.
+   */
+  connect(url?: string): ClientSocket {
     if (this.socketRef) return this.socketRef;
 
-    const socket: ClientSocket = io(url, {
+    const socket: ClientSocket = io(url ?? '/', {
       transports: ['websocket'],
       autoConnect: true,
       reconnection: true,

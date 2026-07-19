@@ -6,8 +6,7 @@ import { TopNav } from '@/features/landing/components/TopNav';
 import { Button } from '@/ui/Button';
 import { Panel, PanelLabel } from '@/ui/Panel';
 import { cn } from '@/ui/cn';
-
-const API = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+import { API_BASE } from '@/net/serverUrl';
 
 interface ProfilePayload {
   user: { username: string; level: number; xp: number };
@@ -62,7 +61,7 @@ export function ProfileScreen() {
     const token = authManager.token();
     if (!token) return;
 
-    void fetch(`${API}/api/profile/me`, { headers: { Authorization: `Bearer ${token}` } })
+    void fetch(`${API_BASE}/api/profile/me`, { headers: { Authorization: `Bearer ${token}` } })
       .then((r) => (r.ok ? r.json() : null))
       .then((body: ProfilePayload | null) => setProfile(body))
       .catch(() => setProfile(null));

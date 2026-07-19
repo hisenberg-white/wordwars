@@ -7,8 +7,7 @@ import { cn } from '@/ui/cn';
 import { useAuth } from '@/net/useConnection';
 import { authManager } from '@/net/AuthManager';
 import { connection } from '@/net/ConnectionManager';
-
-const API = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+import { API_BASE } from '@/net/serverUrl';
 
 /**
  * Friends.
@@ -42,7 +41,7 @@ export function FriendsScreen() {
     const token = authManager.token();
     if (!token) return null;
 
-    const response = await fetch(`${API}/api/friends${path}`, {
+    const response = await fetch(`${API_BASE}/api/friends${path}`, {
       method: body ? 'POST' : 'GET',
       headers: { 'content-type': 'application/json', Authorization: `Bearer ${token}` },
       ...(body ? { body: JSON.stringify(body) } : {}),

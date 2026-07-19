@@ -24,6 +24,9 @@ import tailwindcss from '@tailwindcss/vite';
  *   VITE_SERVER_URL=https://<api-tunnel>   (inlined at startup, not runtime)
  *   CORS_ORIGIN=https://<web-tunnel>       (in apps/server/.env)
  */
+/** Where the game server actually runs. Only the dev proxy needs to know. */
+const SERVER_TARGET = process.env['VITE_PROXY_TARGET'] ?? 'http://localhost:4000';
+
 function tunnelHosts(mode: string, root: string): string[] {
   const env = loadEnv(mode, root, '');
 
@@ -48,6 +51,26 @@ export default defineConfig(({ mode }) => {
       port: 5173,
       strictPort: true,
       ...(allowedHosts.length > 0 ? { allowedHosts } : {}),
+
+      /*
+       * The game server, served through this one.
+       *
+       * Without this, the browser has to reach port 4000 directly, which only
+       * ever works on the machine running it: open the game from a phone or a
+       * tunnel and the page loads while every request and the socket try to
+       * find a server on the VIEWER's computer. Proxying makes the whole game
+       * same-origin, so a single tunnel pointed at this port carries it all.
+       *
+       * `ws: true` on /socket.io is the load-bearing part — the fight is a
+       * WebSocket, and a proxy that forwards only HTTP gives you a lobby that
+       * loads and a match that never starts.
+       */
+      proxy: {
+        '/socket.io': { target: SERVER_TARGET, ws: true, changeOrigin: true },
+        '/api': { target: SERVER_TARGET, changeOrigin: true },
+        '/health': { target: SERVER_TARGET, changeOrigin: true },
+        '/metrics': { target: SERVER_TARGET, changeOrigin: true },
+      },
     },
     build: {
       target: 'es2022',

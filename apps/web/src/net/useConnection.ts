@@ -4,8 +4,7 @@ import { identity, type IdentitySnapshot } from './IdentityManager';
 import { matchmaking, type MatchmakingSnapshot } from './MatchmakingManager';
 import { roomManager, type RoomSnapshot } from './RoomManager';
 import { authManager, type AuthSnapshot } from './AuthManager';
-
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
+import { SOCKET_URL } from './serverUrl';
 
 /**
  * Subscribes to connection state.
@@ -27,7 +26,7 @@ export function useConnection(): ConnectionSnapshot {
  */
 export function useConnectionLifecycle(): void {
   useEffect(() => {
-    const socket = connection.connect(SERVER_URL);
+    const socket = connection.connect(SOCKET_URL);
     identity.attach(socket);
   }, []);
 }
