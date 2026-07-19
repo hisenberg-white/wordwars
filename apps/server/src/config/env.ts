@@ -19,7 +19,9 @@ const schema = z
     HOST: z.string().default('0.0.0.0'),
     PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
 
-    LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+    LOG_LEVEL: z
+      .enum(['silent', 'fatal', 'error', 'warn', 'info', 'debug', 'trace'])
+      .default('info'),
     LOG_PRETTY: booleanish.default('false'),
 
     /** Comma-separated allowed origins, or `*` in development. */

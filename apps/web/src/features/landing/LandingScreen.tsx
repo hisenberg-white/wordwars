@@ -1,4 +1,5 @@
 import { Button } from '@/ui/Button';
+import { ConnectionBadge } from '@/ui/ConnectionBadge';
 import { Panel, PanelLabel } from '@/ui/Panel';
 import { Wordmark } from '@/ui/Wordmark';
 
@@ -20,6 +21,7 @@ export function LandingScreen() {
               {item}
             </Button>
           ))}
+          <ConnectionBadge className="ml-3" />
         </nav>
       </header>
 

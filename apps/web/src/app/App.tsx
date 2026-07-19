@@ -1,9 +1,12 @@
 import { Route, Routes } from 'react-router-dom';
 import { Backdrop } from '@/ui/Backdrop';
+import { useConnectionLifecycle } from '@/net/useConnection';
 import { LandingScreen } from '@/features/landing/LandingScreen';
 import { NotFoundScreen } from '@/features/landing/NotFoundScreen';
 
 export function App() {
+  useConnectionLifecycle();
+
   return (
     <>
       <Backdrop />

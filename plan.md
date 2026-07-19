@@ -56,7 +56,24 @@ picked up cold and executed without re-deriving decisions.
       → NOT visually verified — no browser tooling in that session. Compilation of
         `@theme` into real utilities was asserted by grepping the built CSS.
         **Someone should eyeball this in a browser before Phase 2 styling builds on it.**
-- [ ] 1.5 Socket round-trip proven end to end (client connects, echoes, shows status)
+- [x] 1.5 Socket round-trip proven end to end (client connects, echoes, shows status)
+      → `web/src/net/ConnectionManager.ts` — plain class OUTSIDE React, exposed via
+        `useSyncExternalStore`. This is the reference implementation of D3: network
+        data lands in mutable state, only coarse changes reach React. Phase 3's
+        keystroke path follows this exact shape, so it isn't invented under pressure.
+      → Built on the heartbeat rather than an echo: gives ping AND the NTP-style
+        clock offset. `connection.serverNow()` is what the match countdown will use —
+        two players' machine clocks differ by seconds, so a raw `Date.now()`
+        countdown would visibly start the fight at different moments per screen.
+      → Ping is a MEDIAN of the last 5 samples; one stalled packet shouldn't make a
+        healthy connection look bad for 15s. Colour-coded <60 / <150 / above.
+      → 7 gateway integration tests (real HTTP server, real gateway, real WebSocket,
+        no mocks) covering identity assignment, heartbeat, malformed-payload
+        rejection, and rate limiting. 13 tests total, all green.
+      → Verified: server + web run together; polling handshake correctly 400s,
+        confirming websocket-only enforcement.
+      → STILL UNVERIFIED IN A BROWSER (no browser tooling): the React wiring of
+        ConnectionBadge. Server half is proven by tests.
 - [ ] 1.6 Docker compose (Postgres + Redis) + Prisma schema v1 — *written, optional in dev*
 - [ ] 1.7 CI — lint + typecheck + test
 
