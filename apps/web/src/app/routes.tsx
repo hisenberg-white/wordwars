@@ -12,16 +12,6 @@ export const PENDING_ROUTES: ReadonlyArray<{
   element: ReactElement;
 }> = [
   {
-    path: '/leaderboard',
-    element: (
-      <ComingSoonScreen
-        step="4.4"
-        title="Leaderboard"
-        description="Global, country, weekly and season rankings. Needs accounts and a stats pipeline first."
-      />
-    ),
-  },
-  {
     path: '/characters',
     element: (
       <ComingSoonScreen

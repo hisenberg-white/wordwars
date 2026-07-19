@@ -44,6 +44,19 @@ const schema = z
       .int()
       .positive()
       .default(24 * 30),
+    /**
+     * How often leaderboards are rebuilt.
+     *
+     * Boards are materialised, never computed per request, so this is the
+     * honest lag between winning a match and seeing it in the standings. Five
+     * minutes trades freshness for a request path that does not get slower as
+     * the game grows. Lower it on a small deployment; raise it on a large one.
+     */
+    LEADERBOARD_REBUILD_MS: z.coerce
+      .number()
+      .int()
+      .min(1_000)
+      .default(5 * 60_000),
   })
   .superRefine((env, ctx) => {
     if (env.PERSISTENCE === 'full') {

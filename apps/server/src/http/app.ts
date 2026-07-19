@@ -6,6 +6,8 @@ import { logger } from '../logger.js';
 import { healthRouter } from './routes/health.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createProfileRouter } from './routes/profile.js';
+import { createLeaderboardRouter } from './routes/leaderboard.js';
+import { LeaderboardService } from '../services/leaderboardService.js';
 import type { Repositories } from '../db/repositories.js';
 
 /**
@@ -15,7 +17,15 @@ import type { Repositories } from '../db/repositories.js';
  * for health checks, and later for auth, profiles, leaderboards and admin —
  * things that are request/response shaped and cacheable.
  */
-export function createApp(repos: Repositories): Express {
+export function createApp(
+  repos: Repositories,
+  /*
+   * Defaulted so tests and scripts can build an app with one argument, while
+   * the real server passes the instance it also starts and stops. An app that
+   * silently owned an unstarted timer would serve permanently empty boards.
+   */
+  leaderboards: LeaderboardService = new LeaderboardService(repos),
+): Express {
   const app = express();
 
   app.disable('x-powered-by');
@@ -45,6 +55,7 @@ export function createApp(repos: Repositories): Express {
   app.use('/health', healthRouter);
   app.use('/api/auth', createAuthRouter(repos));
   app.use('/api/profile', createProfileRouter(repos));
+  app.use('/api/leaderboard', createLeaderboardRouter(leaderboards));
 
   app.use((_req: Request, res: Response) => {
     res.status(404).json({ error: { code: 'NOT_FOUND' } });

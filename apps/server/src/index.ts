@@ -4,6 +4,7 @@ import { logger } from './logger.js';
 import { createApp } from './http/app.js';
 import { createMemoryRepositories } from './db/memory.js';
 import { createGateway } from './realtime/gateway.js';
+import { LeaderboardService } from './services/leaderboardService.js';
 
 /*
  * Persistence.
@@ -13,7 +14,15 @@ import { createGateway } from './realtime/gateway.js';
  * behind the same interfaces once Postgres is available (see db/repositories).
  */
 const repositories = createMemoryRepositories();
-const app = createApp(repositories);
+
+/*
+ * Leaderboards are materialised on a timer, never computed per request
+ * (plan §8). Started here so the boards exist before the first visitor.
+ */
+const leaderboards = new LeaderboardService(repositories);
+leaderboards.start(env.LEADERBOARD_REBUILD_MS);
+
+const app = createApp(repositories, leaderboards);
 const httpServer = createServer(app);
 const io = createGateway(httpServer, repositories);
 
@@ -60,6 +69,7 @@ async function shutdown(signal: string): Promise<void> {
   forceExit.unref();
 
   try {
+    leaderboards.stop();
     await io.close();
     await new Promise<void>((resolve, reject) => {
       httpServer.close((err) => (err ? reject(err) : resolve()));

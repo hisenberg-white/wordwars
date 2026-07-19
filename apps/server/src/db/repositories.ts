@@ -102,6 +102,32 @@ export interface MatchRepository {
    * history rather than being thrown away (plan §"OPTIONAL ACCOUNT SYSTEM").
    */
   claimForUser(playerId: PlayerId, userId: UserId): Promise<number>;
+  /**
+   * Every match started at or after `from`, for leaderboard materialisation.
+   *
+   * Deliberately NOT on the request path — this is what the scheduled job
+   * reads. In Postgres it is an indexed range scan feeding a GROUP BY; the
+   * point of materialising is that nobody waits on it.
+   */
+  since(from: number): Promise<MatchRecord[]>;
+}
+
+export interface StoredLeaderboard {
+  readonly key: string;
+  readonly json: string;
+  readonly computedAt: number;
+}
+
+/**
+ * Materialised boards.
+ *
+ * Stored as computed JSON rather than rows to be re-ranked on read: the whole
+ * reason boards are precomputed is that reading one should be a single lookup
+ * no matter how many matches exist behind it.
+ */
+export interface LeaderboardRepository {
+  get(key: string): Promise<StoredLeaderboard | null>;
+  put(entry: StoredLeaderboard): Promise<void>;
 }
 
 export interface StoredAchievement {
@@ -120,4 +146,5 @@ export interface Repositories {
   readonly stats: StatsRepository;
   readonly matches: MatchRepository;
   readonly achievements: AchievementRepository;
+  readonly leaderboards: LeaderboardRepository;
 }

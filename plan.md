@@ -13,7 +13,7 @@ picked up cold and executed without re-deriving decisions.
 > **Any new session: start here.** Work the first unchecked box in the current
 > phase. Tick boxes as they land. Do not rebuild anything already ticked.
 
-**Current phase: Phase 4 — Accounts & Meta.** 4.1–4.3 complete. Next: 4.4 Leaderboards.
+**Current phase: Phase 4 — Accounts & Meta.** 4.1–4.4 complete. Next: 4.5 Friends + match history.
 
 > Phase 3 is done bar the SUBJECTIVE half of the 3.11 gate: the balance numbers
 > are proven by simulation, but **nobody has actually played this yet.** That
@@ -872,7 +872,37 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
       → 251 server tests. **Live-verified 9 checks** end to end: new account all
       locked, one dominant match unlocked first-victory + flawless + combo-30 +
       both speed tiers, and 1,100 achievement XP landing ON TOP of match XP.
-- [ ] 4.4 Leaderboards
+- [x] 4.4 Leaderboards
+      → **Materialised on a timer, never computed per request** (§8). `rebuild()`
+      does all the aggregation; `read()` is one key lookup. A live GROUP BY over
+      every match ever played gets slower exactly as the game gets more popular,
+      which is the worst possible moment for it to get slower.
+      → **Five boards, not one.** "Best player" is not a single number — winning
+      most and typing fastest are different achievements. Same declarative shape
+      as achievements: each board is a metric + a qualifier.
+      → **The qualifier is the difference between a leaderboard and a lottery.**
+      Without a floor, whoever won their only match sits at 100% above someone
+      who won 400 of 500, forever — that board measures sample size, not skill,
+      and every reader can tell. Rate/peak boards need one (win rate 10, wpm and
+      combo 3); volume boards do not, since you cannot fluke your way to a total.
+      → Ties SHARE a rank (1,2,2,4); ids order within a tie so boards do not
+      reshuffle every rebuild. Zero scores are an absence, not last place.
+      → Empty boards EXPLAIN themselves — a blank list reads as broken, "no one
+      has played 10 matches yet" reads as an invitation.
+      → Guests are excluded: a name on a permanent board needs a permanent owner.
+      They stay first-class everywhere else.
+      → Periods are UTC-anchored (weeks start Monday) or two players would see
+      different standings from identical data.
+      → Public, no auth: standings are the shop window, and hiding them conceals
+      the best argument for making an account. 30s Cache-Control.
+      → `LEADERBOARD_REBUILD_MS` is the honest lag between winning and appearing.
+      → 279 server tests. **Live-verified 18 checks** against a running server:
+      two accounts, two real matches, winner on the board with the true win count,
+      the zero-win player absent rather than last, the qualifier holding a
+      2-match 100% player OFF the win-rate board, period + country scoping, and
+      malformed input rejected.
+      → DEFERRED with reasons: friends boards need friends (4.5); season boards
+      need a Season entity, which is Phase 5 — inventing one now is scope creep.
 - [ ] 4.5 Friends + match history
 
 ### Phase 5 — Production Polish

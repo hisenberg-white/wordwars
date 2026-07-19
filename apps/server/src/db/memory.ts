@@ -2,7 +2,9 @@ import { randomUUID } from 'node:crypto';
 import { asUserId, type PlayerId, type UserId } from '@wordwars/shared';
 import type {
   AchievementRepository,
+  LeaderboardRepository,
   StoredAchievement,
+  StoredLeaderboard,
   MatchOutcomeForStats,
   MatchRecord,
   MatchRepository,
@@ -26,7 +28,16 @@ import type {
  * tests become its conformance suite.
  */
 
-const HISTORY_LIMIT = 200;
+/*
+ * Bounded, or a long-running dev server grows without limit.
+ *
+ * Raised from 200 when leaderboards landed: all-time boards aggregate over this
+ * list, so the cap silently truncates them. That is acceptable HERE — this is
+ * the no-database mode and its whole contract is that data is disposable — but
+ * it is a genuine behavioural difference from Postgres, which aggregates over
+ * everything. Stated rather than hidden.
+ */
+const HISTORY_LIMIT = 5_000;
 
 class MemoryUserRepository implements UserRepository {
   private readonly byId = new Map<UserId, UserRecord>();
@@ -109,8 +120,11 @@ class MemoryMatchRepository implements MatchRepository {
 
   async record(match: MatchRecord): Promise<void> {
     this.matches.unshift(match);
-    // Bounded, or a long-running dev server grows without limit.
     if (this.matches.length > HISTORY_LIMIT) this.matches.length = HISTORY_LIMIT;
+  }
+
+  async since(from: number): Promise<MatchRecord[]> {
+    return this.matches.filter((m) => m.startedAt >= from);
   }
 
   async recentForUser(userId: UserId, limit: number): Promise<MatchRecord[]> {
@@ -154,12 +168,25 @@ class MemoryAchievementRepository implements AchievementRepository {
   }
 }
 
+class MemoryLeaderboardRepository implements LeaderboardRepository {
+  private readonly boards = new Map<string, StoredLeaderboard>();
+
+  async get(key: string): Promise<StoredLeaderboard | null> {
+    return this.boards.get(key) ?? null;
+  }
+
+  async put(entry: StoredLeaderboard): Promise<void> {
+    this.boards.set(entry.key, entry);
+  }
+}
+
 export function createMemoryRepositories(): Repositories {
   return {
     users: new MemoryUserRepository(),
     stats: new MemoryStatsRepository(),
     matches: new MemoryMatchRepository(),
     achievements: new MemoryAchievementRepository(),
+    leaderboards: new MemoryLeaderboardRepository(),
   };
 }
 
