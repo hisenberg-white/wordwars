@@ -30,15 +30,27 @@ export function registerMatchmakingHandlers(
       }
 
       /*
-       * A live fight is the one thing Quick Match must not interrupt.
+       * Asking to queue while in a live match forfeits it.
        *
-       * Leaving here would abandon an opponent mid-match, which is a forfeit
-       * wearing a button's clothes — if that is what the player wants, it
-       * should be the forfeit button that says so.
+       * This looks harsh and is the opposite of what I first wrote, which
+       * refused with ROOM_IN_PROGRESS to avoid abandoning an opponent. That
+       * refusal turned out to be how a player becomes PERMANENTLY unable to
+       * play: a guest's id survives reloads, so a match left stranded by any
+       * bug answers for them forever and every Play click is refused, with no
+       * way out short of restarting the server. A wall with no door is worse
+       * than a forfeit.
+       *
+       * It is also not really silent. A player inside a live match is looking
+       * at the arena, not at Play Now — reaching this line means they left the
+       * fight already. Forfeiting hands the opponent the win they are owed
+       * instead of leaving them in a match against nobody.
        */
-      if (ctx.matches.forPlayer(playerId) !== null) {
-        ack(ackError('ROOM_IN_PROGRESS', 'Finish or forfeit your current match first.'));
-        return;
+      const liveMatch = ctx.matches.forPlayer(playerId);
+
+      if (liveMatch && !liveMatch.isFinished) {
+        const opponent = liveMatch.fighters.find((f) => f.playerId !== playerId);
+        liveMatch.abort('forfeit', opponent?.playerId ?? null);
+        log.info({ playerId, matchId: liveMatch.matchId }, 'Left a live match to requeue');
       }
 
       const current = socket.data.roomId ? ctx.rooms.get(asRoomId(socket.data.roomId)) : null;

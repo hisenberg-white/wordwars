@@ -3,6 +3,8 @@ import { Route, Routes } from 'react-router-dom';
 import { bindAudio, installAudioUnlock } from '@/audio/bindAudio';
 import { audio } from '@/audio/AudioEngine';
 import { settingsManager } from '@/settings/SettingsManager';
+import { roomManager } from '@/net/RoomManager';
+import { connection } from '@/net/ConnectionManager';
 import { audioSettingsOf } from '@/settings/settings';
 import { authManager } from '@/net/AuthManager';
 import { Backdrop } from '@/ui/Backdrop';
@@ -44,10 +46,26 @@ export function App() {
     applyAudio();
     const offSettings = settingsManager.subscribe(applyAudio);
 
+    /*
+     * Listen for room state from the moment there is a socket.
+     *
+     * The server pushes rooms at the client unprompted — quick-match pairing, a
+     * friend's challenge, and above all reconnecting into a match in progress,
+     * which fires during `guest:init` before any screen has mounted. Attaching
+     * these listeners when a screen asks for a room is too late: the player
+     * comes back from a reload to a game that has already told them everything
+     * they missed, and they sit on the menu while the server believes they are
+     * mid-fight.
+     */
+    const listenForRooms = () => roomManager.listen();
+    listenForRooms();
+    const offConnection = connection.subscribe(listenForRooms);
+
     return () => {
       offAudio();
       offUnlock();
       offSettings();
+      offConnection();
     };
   }, []);
 

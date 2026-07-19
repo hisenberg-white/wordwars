@@ -41,7 +41,32 @@ export function handleMatchDisconnect(
   if (!match || match.isFinished) return;
 
   const room = ctx.rooms.forPlayer(playerId);
-  if (!room) return;
+
+  /*
+   * A match without a room still has to be cleaned up.
+   *
+   * This used to return here, which leaked the match forever: no pause, no
+   * forfeit timer, nothing. And because a guest's playerId is restored from a
+   * signed token across reloads, the stranded match kept answering
+   * `matches.forPlayer()` for that player — so every future attempt to queue
+   * was refused with ROOM_IN_PROGRESS, permanently, with no way out short of
+   * restarting the server.
+   *
+   * The room and the match are separate registries, so "in a match but not in
+   * a room" is a reachable state whenever room teardown and match teardown
+   * disagree. Cleanup must not depend on both being intact.
+   */
+  if (!room) {
+    match.abort(
+      'disconnect',
+      match.fighters.find((f) => f.playerId !== playerId)?.playerId ?? null,
+    );
+    logger.warn(
+      { matchId: match.matchId, playerId },
+      'Match had no room — aborted rather than leaked',
+    );
+    return;
+  }
 
   // The member STAYS in the room, marked absent. Removing them would destroy
   // the seat they need to come back to.
