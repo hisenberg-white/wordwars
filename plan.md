@@ -329,7 +329,52 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
 
 ### Phase 3 — The Game
 
-- [ ] 3.1 `packages/engine` — combat math + unit tests (§5.2)
+- [x] 3.1 `packages/engine` — combat math + unit tests (§5.2)
+      → Pure, deterministic, zero runtime deps (`@wordwars/shared` is a devDep —
+      types only, erased at build). ESLint rules BAN `Date.now()` and
+      `Math.random()` inside the package: those are the two ways determinism
+      quietly stops being true, and a desync is far harder to notice than a
+      failed lint.
+      → **90 tests, 100% coverage — statements, branches, functions, lines.**
+
+      **TWO PLAN NUMBERS WERE WRONG. Both found by simulating before coding:**
+
+          1. **Tempo bonus was inert.** §5.2's `clamp(1.6 - dt/400, …)` put the whole
+             useful curve between 100–300ms/word = 200–600 WPM. EVERY human from 40 to
+             200 WPM sat on the 0.85 floor — the "faster hits harder" mechanic never
+             fired for anyone and was just a flat 15% penalty. Divisor corrected to
+             **1600**, which spreads the curve across 50–150 WPM where players live.
+             A test now asserts the curve actually discriminates across that range.
+
+          2. **HP made the top combo tier unreachable.** At 1000 HP, matches ran ~19s
+             over ~23 words — so combo 35 (the 2.40× tier) could never be reached, and
+             the plan's own "60–90s" target was impossible. Raised to **4000 HP**:
+             ~56s even matches, ~70 words, peak combo ~39.
+
+          Also retuned: Ultimate charge (`2.5 + combo*0.18`, was `4 + combo*0.35`) —
+          the original gave ~6.5 Ultimates per match, so a move meant to freeze time
+          and make spectators gasp was neither rare nor cinematic. Now ~2 per player.
+          Ultimate damage scaled to `260 + 6*combo` (~4–5× a normal hit, ~10% of a bar).
+
+          → **RNG is position-addressed, not sequential** — `hash(seed, slot, wordIndex)`.
+            This is the single most important architectural call in the engine. A normal
+            seeded PRNG yields its Nth value only after N-1 draws, but the client
+            predicts ONLY its own words while the server interleaves both players — they
+            would consume the stream in different orders and disagree about crits.
+            Hashing by position means any value computes in isolation, in any order, on
+            any machine. Tested explicitly: a fighter's rolls are identical whether or
+            not the opponent is acting.
+          → Determinism test (plan §10): same seed + same inputs → byte-identical events.
+          → Word index must arrive in order — the anti-cheat floor. Without it a client
+            replays word 7 forever and lands unlimited hits.
+          → A word is scored at the combo held BEFORE the strike, not after.
+          → Ultimates ignore crits: a cinematic finisher that sometimes did 1.8× more
+            would make the game's biggest moment feel arbitrary.
+          → `impactWeight` is separate from damage — a chip hit and a heavy hit can do
+            similar numbers at different combo tiers but must not FEEL the same.
+          → `constants.ts` is the tuning file for the 3.11 gate; every value carries its
+            rationale, because a bare number nobody understands is one nobody dares change.
+
 - [ ] 3.2 InputEngine (§4)
 - [ ] 3.3 Server MatchEngine — tick loop, validation, sentence streaming, batching
 - [ ] 3.4 Phaser arena scene + procedural fighters
@@ -605,15 +650,20 @@ ultimate ready ──▶ next word glows ──▶ type it ──▶ cinematic u
 
 ### 5.2 Numbers (v1 tuning — designed for ~60–90 second matches)
 
+> ⚠️ **The block below is the ORIGINAL design sketch and contains two numbers
+> that were proven wrong in step 3.1** (tempo divisor, and HP). It is kept for
+> the reasoning around it. **The authoritative, simulated values live in
+> `packages/engine/src/constants.ts`** — tune there, not here.
+
 ```
-HP                      = 1000 per fighter
+HP                      = 1000 per fighter   // ← WRONG: 4000. See 3.1.
 baseDamage(word)        = 18 + 4 * clamp(len - 3, 0, 9)      // 18..54
 comboMultiplier(c)      = c <  5  -> 1.00
                           c < 10  -> 1.25
                           c < 20  -> 1.55
                           c < 35  -> 1.90
                           c >= 35 -> 2.40
-tempoBonus(dt)          = clamp(1.6 - dt / 400ms, 0.85, 1.35)  // faster = harder
+tempoBonus(dt)          = clamp(1.6 - dt / 400ms, 0.85, 1.35)  // ← WRONG: /1600. See 3.1.
 critChance              = 0.07 + 0.003 * combo   (cap 0.25)
 critMultiplier          = 1.8
 damage = round(baseDamage * comboMultiplier * tempoBonus * (crit ? 1.8 : 1))
