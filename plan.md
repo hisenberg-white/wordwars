@@ -403,7 +403,51 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
       words hit harder, an Ultimate charges and fires, and a knockout is reached by
       typing alone. This is the first proof that typing IS the controller.
       → 52 web tests total.
-- [ ] 3.3 Server MatchEngine — tick loop, validation, sentence streaming, batching
+- [x] 3.3 Server MatchEngine — tick loop, validation, sentence streaming, batching
+      → `packages/content` — word banks by difficulty, chosen so the text READS like
+      combat ("strike", "riposte", "devastating"). A fighting game whose words are
+      "the quick brown fox" is a typing test in costume. `code` difficulty attacks
+      accuracy rather than length: brackets and the shift key are where combos die.
+      → Sentences are generated deterministically from `(seed, index)`, same hash
+      approach as the engine RNG. A match is therefore fully reproducible from its
+      seed: a reconnecting client can be handed byte-identical text without the
+      server storing any, and a reported match can be replayed later.
+      → `ServerMatch` owns its own timers and engine state entirely in-process
+      (D2). Events flush at 30Hz, snapshots at 10Hz, tick at 4Hz. A KO flushes
+      IMMEDIATELY rather than waiting up to 33ms — the one event that must never
+      arrive late.
+      → **Server receipt time is used for tempo, NOT the client's timestamp.** This
+      deviates from plan §7.4 deliberately: it removes an entire cheat vector (a
+      client cannot claim to have typed faster than it did) at the cost of network
+      jitter in the bonus. That cost is small — constant latency shifts both
+      arrivals equally and cancels out of the GAP; only jitter remains, tens of ms
+      against a 400-1200ms scale. Client timings are still collected, but used
+      EXCLUSIVELY for cheat heuristics, never for damage.
+      → Damage is scored from the server's own word at that index, so a client
+      cannot inflate it by claiming to have typed something longer.
+      → Text is streamed two sentences ahead of the furthest player. The player must
+      never see the end of the text; running out mid-combo would stall the one place
+      the game promises never to stall.
+      → `CheatMonitor` flags, never punishes. A fast typist wrongly kicked is a
+      player lost forever; a cheat that finishes one match before review costs
+      nothing. Thresholds sit beyond human capability, not at its edge.
+      → **REAL BUG FOUND BY A TEST:** the sustained-rate window measured elapsed
+      time from the first record but counted THAT record's characters too,
+      inflating measured WPM by ~11% — enough to flag a legitimate 215 WPM typist
+      as a cheat. Fixed by excluding the first record's chars.
+      → Disconnect mid-match awards the win rather than freezing the fight. The
+      20-second reconnect grace (§7.3) lands in 3.10; until then a forfeit beats
+      the survivor typing into a match that will never end.
+      → Client `MatchManager` runs a LOCAL copy of the engine for prediction: a
+      committed word resolves immediately so the animation fires on the same frame
+      as the keystroke, and the server's authoritative events arrive ms later.
+      Prediction covers only OUR OWN attacks — the opponent's words are unknown, so
+      there is nothing to predict and everything to get wrong.
+      → 169 server tests + 21 content tests. **Live-verified over real sockets:** two
+      clients matched, same seed, identical text, 134 events in 81 batches (batching
+      confirmed), 78 snapshots, ultimate fired, KO delivered, both clients agreed on
+      the winner, per-fighter stats correct — and the 770 WPM bot script was
+      correctly flagged `sustained-rate` while the match still completed.
 - [ ] 3.4 Phaser arena scene + procedural fighters
 - [ ] 3.5 FX — attacks, hits, crits, combos, ultimate cinematic, KO
 - [ ] 3.6 HUD — HP bars, combo counter, ultimate meter, text band

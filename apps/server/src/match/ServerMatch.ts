@@ -1,0 +1,410 @@
+import { randomInt } from 'node:crypto';
+import {
+  accuracyBpFromCounts,
+  applyWordAttempt,
+  averageWpm,
+  createMatchState,
+  tick,
+  type EngineFighter,
+  type EngineMatchState,
+} from '@wordwars/engine';
+import { WORDS_PER_SENTENCE, generateSentence } from '@wordwars/content';
+import type {
+  CombatEvent,
+  Difficulty,
+  FighterResult,
+  MatchConfig,
+  MatchEndReason,
+  MatchFighter,
+  MatchResult,
+  MatchSnapshot,
+  MatchWordPayload,
+  PlayerId,
+  Sentence,
+} from '@wordwars/shared';
+import { asMatchId } from '@wordwars/shared';
+import { logger } from '../logger.js';
+import { CheatMonitor } from './CheatMonitor.js';
+
+/**
+ * Cadences.
+ *
+ * Events at 30Hz and snapshots at 10Hz (plan §7.2). Events are the narration —
+ * they must feel immediate. Snapshots exist only to correct prediction drift,
+ * and drift accumulates slowly, so sending them three times less often costs
+ * nothing and roughly halves the bandwidth.
+ */
+const EVENT_FLUSH_MS = 33;
+const SNAPSHOT_MS = 100;
+const TICK_MS = 250;
+
+/**
+ * Keep this many words ahead of the fastest player.
+ *
+ * The player must never see the end of the text. Running out mid-combo would
+ * be a stall in the one place the game promises never to stall (plan §4.2).
+ */
+const LOOKAHEAD_WORDS = WORDS_PER_SENTENCE * 2;
+
+export interface MatchParticipant {
+  readonly playerId: PlayerId;
+  readonly nickname: string;
+  readonly characterId: string;
+  readonly isGuest: boolean;
+  readonly level: number;
+}
+
+export interface ServerMatchOptions {
+  readonly roomId: string;
+  readonly participants: readonly [MatchParticipant, MatchParticipant];
+  readonly arenaId: string;
+  readonly difficulty: Difficulty;
+  readonly language: string;
+  readonly roundCount: 1 | 3 | 5;
+  readonly enableUltimate: boolean;
+  readonly enableCrits: boolean;
+  readonly isRanked: boolean;
+}
+
+export interface MatchSink {
+  /** Narration batch, 30Hz. */
+  events(matchId: string, batch: { tick: number; events: CombatEvent[] }): void;
+  /** Reconciliation snapshot, 10Hz. */
+  snapshot(matchId: string, snapshot: MatchSnapshot): void;
+  sentence(matchId: string, sentence: Sentence): void;
+  ended(matchId: string, result: MatchResult): void;
+}
+
+/**
+ * One live match.
+ *
+ * Owns its own timers and engine state, entirely in this process (plan §1.1
+ * D2). Nothing here touches Redis or the database: a match is a 60-second
+ * stateful object with sub-100ms latency requirements, and a round trip to
+ * external storage per word is what turns "scales to thousands" into "dies at
+ * two hundred".
+ */
+export class ServerMatch {
+  readonly matchId: string;
+  readonly config: MatchConfig;
+  readonly fighters: readonly MatchFighter[];
+
+  private readonly state: EngineMatchState;
+  private readonly options: ServerMatchOptions;
+  private readonly sink: MatchSink;
+  private readonly monitors = new Map<PlayerId, CheatMonitor>();
+
+  private readonly pendingEvents: CombatEvent[] = [];
+  private sentencesSent = 0;
+  private wordsSent = 0;
+
+  private eventTimer: ReturnType<typeof setInterval> | null = null;
+  private snapshotTimer: ReturnType<typeof setInterval> | null = null;
+  private tickTimer: ReturnType<typeof setInterval> | null = null;
+
+  private startedAt = 0;
+  private finished = false;
+
+  constructor(options: ServerMatchOptions, sink: MatchSink) {
+    this.options = options;
+    this.sink = sink;
+    this.matchId = asMatchId(`m_${randomInt(1e9).toString(36)}${Date.now().toString(36)}`);
+
+    const [a, b] = options.participants;
+    const seed = randomInt(1, 2 ** 31 - 1);
+
+    this.config = {
+      matchId: asMatchId(this.matchId),
+      mode: '1v1',
+      arenaId: options.arenaId as MatchConfig['arenaId'],
+      difficulty: options.difficulty,
+      language: options.language,
+      seed,
+      maxHp: 0, // Replaced below from the engine's own default.
+      enableUltimate: options.enableUltimate,
+      enableCrits: options.enableCrits,
+      roundCount: options.roundCount,
+      isRanked: options.isRanked,
+    };
+
+    this.state = createMatchState({
+      matchId: this.matchId,
+      seed,
+      players: [a.playerId, b.playerId],
+      enableUltimate: options.enableUltimate,
+      enableCrits: options.enableCrits,
+    });
+
+    this.config = { ...this.config, maxHp: this.state.maxHp };
+
+    this.fighters = [{ ...toFighter(a, 'left') }, { ...toFighter(b, 'right') }];
+
+    for (const participant of options.participants) {
+      this.monitors.set(participant.playerId, new CheatMonitor());
+    }
+  }
+
+  /** The opening sentence, handed over with `match:start`. */
+  start(): { config: MatchConfig; fighters: readonly MatchFighter[]; firstSentence: Sentence } {
+    this.startedAt = Date.now();
+
+    const firstSentence = this.buildSentence();
+    // Enough text buffered that no player can reach the end before the stream
+    // catches up, even at superhuman speed.
+    this.streamAhead();
+
+    this.eventTimer = setInterval(() => this.flushEvents(), EVENT_FLUSH_MS);
+    this.snapshotTimer = setInterval(() => this.sendSnapshot(), SNAPSHOT_MS);
+    this.tickTimer = setInterval(() => this.advance(), TICK_MS);
+
+    logger.info(
+      { matchId: this.matchId, arena: this.options.arenaId, seed: this.config.seed },
+      'Match started',
+    );
+
+    return { config: this.config, fighters: this.fighters, firstSentence };
+  }
+
+  /**
+   * Resolves a word from a client.
+   *
+   * The authoritative path. Note what is NOT trusted: the client's own idea of
+   * when it typed. See `atMs` below.
+   */
+  submitWord(playerId: PlayerId, payload: MatchWordPayload): void {
+    if (this.finished) return;
+    if (payload.matchId !== this.matchId) return;
+
+    const word = this.wordAt(payload.wordIndex);
+    if (word === null) return; // Beyond anything we have issued.
+
+    /*
+     * Server receipt time, not the client's timestamp.
+     *
+     * Plan §7.4 suggested deriving tempo from client-reported timings. Using
+     * our own arrival time instead removes an entire cheat vector — a client
+     * cannot claim to have typed faster than it did — at the cost of some
+     * network jitter in the tempo bonus. That cost is small: constant latency
+     * shifts both arrivals equally and cancels out of the GAP, and only
+     * jitter remains, which is tens of ms against a 400-1200ms scale.
+     *
+     * The client's reported timings are still collected, but exclusively for
+     * cheat heuristics — never for damage.
+     */
+    const atMs = Date.now() - this.startedAt;
+
+    const flag = this.monitors.get(playerId)?.record(atMs, word.length, payload.timings);
+
+    if (flag) {
+      logger.warn(
+        { matchId: this.matchId, playerId, reason: flag.reason, detail: flag.detail },
+        'Timing flag raised',
+      );
+    }
+
+    const delta = applyWordAttempt(this.state, {
+      playerId,
+      wordIndex: payload.wordIndex,
+      wordLength: word.length,
+      dirty: payload.dirty,
+      atMs,
+    });
+
+    if (delta.rejected) {
+      logger.debug(
+        { matchId: this.matchId, playerId, reason: delta.rejected },
+        'Word attempt rejected',
+      );
+      return;
+    }
+
+    this.pendingEvents.push(...delta.events);
+    this.streamAhead();
+
+    if (delta.terminal) {
+      // Flush immediately rather than waiting up to 33ms — the KO is the one
+      // event that must never arrive late.
+      this.flushEvents();
+      this.finish('knockout');
+    }
+  }
+
+  /** Ends the match early — forfeit, disconnect, or room teardown. */
+  abort(reason: MatchEndReason, winnerId: PlayerId | null = null): void {
+    if (this.finished) return;
+    if (winnerId) this.state.winnerId = winnerId;
+    this.finish(reason);
+  }
+
+  get isFinished(): boolean {
+    return this.finished;
+  }
+
+  /** Current snapshot, used on reconnect to resynchronise a returning player. */
+  snapshot(): MatchSnapshot {
+    return {
+      tick: this.state.tickCount,
+      phase: this.state.phase,
+      rageMultiplier: this.state.rageMultiplier,
+      elapsedMs: this.elapsedMs(),
+      fighters: this.state.fighters.map((f) => ({
+        playerId: f.playerId,
+        hp: f.hp,
+        maxHp: this.state.maxHp,
+        combo: f.combo,
+        maxCombo: f.maxCombo,
+        ultimateCharge: f.ultimateCharge,
+        ultimateReady: f.ultimateReady,
+        wordIndex: f.wordIndex,
+      })),
+    };
+  }
+
+  /** Every sentence issued so far, for a reconnecting client. */
+  issuedSentences(): Sentence[] {
+    return Array.from({ length: this.sentencesSent }, (_, index) => ({
+      index,
+      words: generateSentence(this.options.difficulty, this.config.seed, index),
+    }));
+  }
+
+  // ---- Internals --------------------------------------------------------
+
+  private elapsedMs(): number {
+    return this.startedAt === 0 ? 0 : Date.now() - this.startedAt;
+  }
+
+  private wordAt(globalIndex: number): string | null {
+    if (globalIndex < 0 || globalIndex >= this.wordsSent) return null;
+
+    const sentenceIndex = Math.floor(globalIndex / WORDS_PER_SENTENCE);
+    const offset = globalIndex % WORDS_PER_SENTENCE;
+
+    return (
+      generateSentence(this.options.difficulty, this.config.seed, sentenceIndex)[offset] ?? null
+    );
+  }
+
+  private buildSentence(): Sentence {
+    const index = this.sentencesSent;
+    const words = generateSentence(this.options.difficulty, this.config.seed, index);
+
+    this.sentencesSent += 1;
+    this.wordsSent += words.length;
+
+    return { index, words };
+  }
+
+  /** Issues more text while any fighter is within the lookahead of the end. */
+  private streamAhead(): void {
+    const furthest = Math.max(...this.state.fighters.map((f) => f.wordIndex));
+
+    while (this.wordsSent - furthest < LOOKAHEAD_WORDS) {
+      const sentence = this.buildSentence();
+      this.sink.sentence(this.matchId, sentence);
+    }
+  }
+
+  private flushEvents(): void {
+    if (this.pendingEvents.length === 0) return;
+
+    const events = this.pendingEvents.splice(0, this.pendingEvents.length);
+    this.sink.events(this.matchId, { tick: this.state.tickCount, events });
+  }
+
+  private sendSnapshot(): void {
+    if (this.finished) return;
+    this.sink.snapshot(this.matchId, this.snapshot());
+  }
+
+  private advance(): void {
+    if (this.finished) return;
+
+    const delta = tick(this.state, this.elapsedMs());
+    if (delta.events.length > 0) this.pendingEvents.push(...delta.events);
+  }
+
+  private finish(reason: MatchEndReason): void {
+    if (this.finished) return;
+    this.finished = true;
+
+    this.stopTimers();
+    this.flushEvents();
+
+    const durationMs = this.elapsedMs();
+    const result: MatchResult = {
+      matchId: asMatchId(this.matchId),
+      winnerId: this.state.winnerId,
+      reason,
+      durationMs,
+      fighters: this.state.fighters.map((f) => this.toResult(f, durationMs)),
+      xpAwarded: {},
+    };
+
+    logger.info(
+      {
+        matchId: this.matchId,
+        reason,
+        durationMs,
+        winner: this.state.winnerId,
+        flagged: [...this.monitors.values()].some((m) => m.flagged),
+      },
+      'Match finished',
+    );
+
+    this.sink.ended(this.matchId, result);
+  }
+
+  private toResult(fighter: EngineFighter, durationMs: number): FighterResult {
+    return {
+      playerId: fighter.playerId,
+      hpRemaining: fighter.hp,
+      damageDealt: fighter.damageDealt,
+      wordsTyped: fighter.wordsTyped,
+      wordsMissed: fighter.wordsMissed,
+      accuracy: accuracyBpFromCounts(fighter.wordsTyped, fighter.wordsMissed) / 100,
+      avgWpm: averageWpm(fighter, durationMs),
+      peakWpm: fighter.peakWpm,
+      maxCombo: fighter.maxCombo,
+      ultimatesUsed: fighter.ultimatesUsed,
+    };
+  }
+
+  private stopTimers(): void {
+    if (this.eventTimer) clearInterval(this.eventTimer);
+    if (this.snapshotTimer) clearInterval(this.snapshotTimer);
+    if (this.tickTimer) clearInterval(this.tickTimer);
+    this.eventTimer = null;
+    this.snapshotTimer = null;
+    this.tickTimer = null;
+  }
+
+  /** True if either player tripped a timing heuristic (plan §4.3). */
+  get flagSummary(): string | null {
+    const parts = [...this.monitors.entries()]
+      .map(([playerId, monitor]) => {
+        const summary = monitor.summarise();
+        return summary ? `${playerId}: ${summary}` : null;
+      })
+      .filter((s): s is string => s !== null);
+
+    return parts.length > 0 ? parts.join(' | ') : null;
+  }
+
+  /** Fired when the room is torn down, so timers cannot outlive the match. */
+  dispose(): void {
+    this.stopTimers();
+    this.finished = true;
+  }
+}
+
+function toFighter(participant: MatchParticipant, side: 'left' | 'right'): MatchFighter {
+  return {
+    playerId: participant.playerId,
+    nickname: participant.nickname,
+    characterId: participant.characterId as MatchFighter['characterId'],
+    isGuest: participant.isGuest,
+    level: participant.level,
+    side,
+  };
+}

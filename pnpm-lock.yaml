@@ -35,6 +35,12 @@ importers:
 
   apps/server:
     dependencies:
+      '@wordwars/content':
+        specifier: workspace:*
+        version: link:../../packages/content
+      '@wordwars/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
       '@wordwars/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -187,6 +193,21 @@ importers:
       typescript-eslint:
         specifier: ^8.18.1
         version: 8.64.0(eslint@9.39.5(jiti@2.7.0))(typescript@5.9.3)
+
+  packages/content:
+    devDependencies:
+      '@wordwars/config':
+        specifier: workspace:*
+        version: link:../config
+      '@wordwars/shared':
+        specifier: workspace:*
+        version: link:../shared
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.1)(jsdom@25.0.1)(lightningcss@1.32.0)
 
   packages/engine:
     devDependencies:

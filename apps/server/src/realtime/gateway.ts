@@ -15,9 +15,11 @@ import { logger } from '../logger.js';
 import type { Pairing } from '../matchmaking/MatchmakingService.js';
 import { createRealtimeContext, type RealtimeContext } from './context.js';
 import { registerGuestHandlers } from './handlers/guest.js';
+import { registerMatchHandlers } from './handlers/match.js';
 import { registerMatchmakingHandlers } from './handlers/matchmaking.js';
 import { registerRoomHandlers } from './handlers/room.js';
 import { startCountdown } from '../rooms/countdown.js';
+import { startMatchForRoom } from '../match/startMatch.js';
 import { RateLimiter, ruleFor } from './rateLimit.js';
 import { validated } from './validate.js';
 
@@ -127,7 +129,11 @@ export function createGatewayWithContext(httpServer: HttpServer): Gateway {
     }, QUICK_MATCH_REVEAL_MS);
   };
 
-  const ctx = createRealtimeContext(onPaired);
+  // The countdown-complete seam from 2.6, now filled in: this is where a room
+  // becomes a live match.
+  const ctx = createRealtimeContext(onPaired, (room) => {
+    startMatchForRoom(io, ctx, room);
+  });
 
   /**
    * This identity is provisional. `guest:init` replaces it with a real
@@ -173,6 +179,7 @@ export function createGatewayWithContext(httpServer: HttpServer): Gateway {
     registerGuestHandlers(socket);
     registerMatchmakingHandlers(socket, ctx);
     registerRoomHandlers(socket, ctx, io);
+    registerMatchHandlers(socket, ctx);
 
     /**
      * Heartbeat / clock sync.
@@ -210,6 +217,19 @@ export function createGatewayWithContext(httpServer: HttpServer): Gateway {
       // A queued player who closes the tab must not be paired with someone who
       // will then wait for a ghost.
       ctx.matchmaking.leave(socket.data.playerId);
+
+      /*
+       * Dropping mid-fight awards the win rather than freezing the match.
+       *
+       * The 20-second reconnect grace from plan §7.3 lands in step 3.10; until
+       * then an immediate forfeit is strictly better than the alternative,
+       * which is the surviving player typing into a match that will never end.
+       */
+      const liveMatch = ctx.matches.forPlayer(socket.data.playerId);
+      if (liveMatch && !liveMatch.isFinished) {
+        const opponent = liveMatch.fighters.find((f) => f.playerId !== socket.data.playerId);
+        liveMatch.abort('disconnect', opponent?.playerId ?? null);
+      }
 
       const roomId = socket.data.roomId;
       if (roomId) {
