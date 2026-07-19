@@ -30,6 +30,18 @@ interface ProfilePayload {
     avgWpm: number;
     avgAccuracyBp: number;
   } | null;
+  achievements: Array<{
+    id: string;
+    name: string;
+    description: string;
+    category: string;
+    xpReward: number;
+    target: number;
+    progress: number;
+    fraction: number;
+    single: boolean;
+    unlockedAt: number | null;
+  }>;
   history: Array<{
     id: string;
     startedAt: number;
@@ -131,6 +143,10 @@ export function ProfileScreen() {
               <Stat label="Best streak" value={`${stats.bestStreak}`} />
             </div>
 
+            {profile.achievements?.length > 0 && (
+              <AchievementList achievements={profile.achievements} />
+            )}
+
             {profile.history.length > 0 && (
               <Panel className="p-6">
                 <PanelLabel>Recent matches</PanelLabel>
@@ -171,6 +187,72 @@ export function ProfileScreen() {
         )}
       </div>
     </Shell>
+  );
+}
+
+/**
+ * Achievements.
+ *
+ * Earned ones lead, then the closest to being earned. Sorting locked items by
+ * how near they are turns a wall of grey into a short list of things worth
+ * trying tonight — a list ordered by id is just an inventory.
+ */
+function AchievementList({ achievements }: { achievements: ProfilePayload['achievements'] }) {
+  const sorted = [...achievements].sort((a, b) => {
+    if (Boolean(a.unlockedAt) !== Boolean(b.unlockedAt)) return a.unlockedAt ? -1 : 1;
+    return b.fraction - a.fraction;
+  });
+
+  const earned = sorted.filter((a) => a.unlockedAt).length;
+
+  return (
+    <Panel className="p-6">
+      <div className="flex items-baseline justify-between">
+        <PanelLabel>Achievements</PanelLabel>
+        <span className="text-xs text-ink-faint">
+          {earned} / {achievements.length}
+        </span>
+      </div>
+
+      <div className="mt-4 grid gap-2 sm:grid-cols-2">
+        {sorted.map((a) => (
+          <div
+            key={a.id}
+            className={cn(
+              'border px-4 py-3',
+              a.unlockedAt ? 'border-ultimate/40 bg-ultimate/[0.06]' : 'border-line/50 bg-abyss/40',
+            )}
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <span
+                className={cn(
+                  'font-display text-sm font-600 uppercase tracking-wide',
+                  a.unlockedAt ? 'text-ultimate' : 'text-ink-dim',
+                )}
+              >
+                {a.name}
+              </span>
+              <span className="shrink-0 text-[0.65rem] text-ink-faint">+{a.xpReward} XP</span>
+            </div>
+
+            <p className="mt-1 text-xs leading-snug text-ink-faint">{a.description}</p>
+
+            {/* Single-match feats get no bar: "60% of the way to a perfect
+                match" is not a meaningful thing to tell somebody. */}
+            {!a.unlockedAt && !a.single && (
+              <div className="mt-2 flex items-center gap-2">
+                <div className="h-1 flex-1 overflow-hidden bg-abyss">
+                  <div className="h-full bg-p2/70" style={{ width: `${a.fraction * 100}%` }} />
+                </div>
+                <span className="shrink-0 text-[0.6rem] tabular-nums text-ink-faint">
+                  {a.progress}/{a.target}
+                </span>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </Panel>
   );
 }
 

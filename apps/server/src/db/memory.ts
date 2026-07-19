@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { asUserId, type PlayerId, type UserId } from '@wordwars/shared';
 import type {
+  AchievementRepository,
+  StoredAchievement,
   MatchOutcomeForStats,
   MatchRecord,
   MatchRepository,
@@ -135,11 +137,29 @@ class MemoryMatchRepository implements MatchRepository {
   }
 }
 
+class MemoryAchievementRepository implements AchievementRepository {
+  private readonly byUser = new Map<UserId, Map<string, StoredAchievement>>();
+
+  async forUser(userId: UserId): Promise<Map<string, StoredAchievement>> {
+    // A copy, so a caller mutating the result cannot corrupt the store — the
+    // Postgres implementation will naturally return fresh objects, and the two
+    // must behave the same.
+    return new Map(this.byUser.get(userId) ?? []);
+  }
+
+  async save(userId: UserId, records: readonly StoredAchievement[]): Promise<void> {
+    const existing = this.byUser.get(userId) ?? new Map<string, StoredAchievement>();
+    for (const record of records) existing.set(record.id, record);
+    this.byUser.set(userId, existing);
+  }
+}
+
 export function createMemoryRepositories(): Repositories {
   return {
     users: new MemoryUserRepository(),
     stats: new MemoryStatsRepository(),
     matches: new MemoryMatchRepository(),
+    achievements: new MemoryAchievementRepository(),
   };
 }
 

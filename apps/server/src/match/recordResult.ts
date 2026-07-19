@@ -2,6 +2,7 @@ import type { MatchResult, PlayerId, UserId } from '@wordwars/shared';
 import { logger } from '../logger.js';
 import type { MatchOutcomeForStats, Repositories } from '../db/repositories.js';
 import { levelForXp, xpForMatch } from '../services/progression.js';
+import { evaluate } from '../services/achievements.js';
 
 /**
  * Persists a finished match and updates progression.
@@ -63,8 +64,31 @@ export async function recordMatchResult(
       if (!user) continue;
 
       const award = xpForMatch(outcome);
-      const xp = user.xp + award.total;
 
+      /*
+       * Achievements are evaluated against stats AFTER this match, so a win
+       * that takes somebody to exactly 10 wins unlocks "Contender" for the
+       * match that earned it rather than the one after.
+       */
+      const stats = await repos.stats.find(userId);
+      let achievementXp = 0;
+
+      if (stats) {
+        const existing = await repos.achievements.forUser(userId);
+        const result = evaluate({ stats, outcome }, existing);
+
+        await repos.achievements.save(userId, result.progress);
+        achievementXp = result.xpAwarded;
+
+        if (result.unlocked.length > 0) {
+          logger.info(
+            { userId, unlocked: result.unlocked.map((a) => a.id) },
+            'Achievements unlocked',
+          );
+        }
+      }
+
+      const xp = user.xp + award.total + achievementXp;
       await repos.users.update(userId, { xp, level: levelForXp(xp) });
     }
   } catch (error) {

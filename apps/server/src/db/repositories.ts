@@ -104,8 +104,20 @@ export interface MatchRepository {
   claimForUser(playerId: PlayerId, userId: UserId): Promise<number>;
 }
 
+export interface StoredAchievement {
+  readonly id: string;
+  readonly progress: number;
+  readonly unlockedAt: number | null;
+}
+
+export interface AchievementRepository {
+  forUser(userId: UserId): Promise<Map<string, StoredAchievement>>;
+  save(userId: UserId, records: readonly StoredAchievement[]): Promise<void>;
+}
+
 export interface Repositories {
   readonly users: UserRepository;
   readonly stats: StatsRepository;
   readonly matches: MatchRepository;
+  readonly achievements: AchievementRepository;
 }

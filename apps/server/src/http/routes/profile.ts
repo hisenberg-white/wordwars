@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { asUserId } from '@wordwars/shared';
 import { AuthService, toPublic } from '../../services/auth.js';
 import { levelProgress } from '../../services/progression.js';
+import { describe as describeAchievements } from '../../services/achievements.js';
 import type { Repositories } from '../../db/repositories.js';
 
 const HISTORY_LIMIT = 20;
@@ -28,15 +29,17 @@ export function createProfileRouter(repos: Repositories): Router {
         return;
       }
 
-      const [stats, history] = await Promise.all([
+      const [stats, history, achievements] = await Promise.all([
         repos.stats.find(user.id),
         repos.matches.recentForUser(user.id, HISTORY_LIMIT),
+        repos.achievements.forUser(user.id),
       ]);
 
       res.json({
         user: toPublic(user),
         progress: levelProgress(user.xp),
         stats,
+        achievements: describeAchievements(achievements),
         history: history.map((match) => ({
           id: match.id,
           startedAt: match.startedAt,

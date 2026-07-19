@@ -13,7 +13,11 @@ picked up cold and executed without re-deriving decisions.
 > **Any new session: start here.** Work the first unchecked box in the current
 > phase. Tick boxes as they land. Do not rebuild anything already ticked.
 
-**Current phase: Phase 3 — The Game.** 3.1–3.10 complete; 3.11 gate PARTIALLY met.
+**Current phase: Phase 4 — Accounts & Meta.** 4.1–4.3 complete. Next: 4.4 Leaderboards.
+
+> Phase 3 is done bar the SUBJECTIVE half of the 3.11 gate: the balance numbers
+> are proven by simulation, but **nobody has actually played this yet.** That
+> playtest still formally blocks sign-off.
 
 > Phase 3 is the point of the whole project. Everything so far exists to deliver
 > two players into a countdown; 3.1–3.11 is the fight. Re-read §0 (The One Rule)
@@ -844,7 +848,30 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
       a real match: account name used as identity, not flagged as guest, match
       counted, win/loss recorded, 43 words and combo 43 captured, 210 XP and a
       level-up, history with the opponent named — and the LOSER still earned 60 XP.
-- [ ] 4.3 Achievements engine
+- [x] 4.3 Achievements engine
+      → **Declared, not coded.** Every achievement is a `metric(ctx)` + a `target`,
+      so progress, unlocking and the progress bar all fall out of ONE comparison.
+      Hand-written unlock logic per achievement is how a system like this ends up
+      with fourteen subtly different definitions of "done".
+      → Server-owned and sent PRE-EVALUATED. The client never decides what is
+      earned — it could not be trusted to, and duplicating the rules guarantees drift.
+      → Single-match feats keep the BEST attempt, cumulative ones take the current
+      total. Without that split, a 60-combo followed by a 3-combo match shows
+      progress going DOWN, which reads as the game taking something away.
+      → `flawless` needs 25+ words, or a 4-word disconnect hands out the most
+      prestigious award on the list for nothing.
+      → **Caught and fixed dead content.** `combo-100` was mathematically
+      IMPOSSIBLE and `combo-50` all but: measurement showed one match tops out
+      near 47 because the fight ENDS at ~45 words. Counterintuitively a BETTER
+      player peaks LOWER — they win faster and type fewer words. Retuned to 30/45.
+      An achievement nobody can earn is worse than no achievement at all; it is a
+      promise the game breaks every time somebody chases it.
+      → `achievements.reachable.test.ts` runs the REAL engine across five skill
+      levels and fails if any target drifts past what a match can produce, so this
+      class of dead content cannot come back.
+      → 251 server tests. **Live-verified 9 checks** end to end: new account all
+      locked, one dominant match unlocked first-victory + flawless + combo-30 +
+      both speed tiers, and 1,100 achievement XP landing ON TOP of match XP.
 - [ ] 4.4 Leaderboards
 - [ ] 4.5 Friends + match history
 
