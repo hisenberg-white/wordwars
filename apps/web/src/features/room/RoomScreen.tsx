@@ -115,9 +115,15 @@ export function RoomScreen() {
     );
   }
 
-  // The arena is full-bleed and owns the whole viewport — it must NOT be
-  // nested inside the lobby's padded, nav-topped shell.
-  if (room.phase === 'in-match') return <MatchScreen />;
+  /*
+   * The arena is full-bleed and owns the whole viewport — it must NOT be
+   * nested inside the lobby's padded, nav-topped shell.
+   *
+   * `post-match` counts too: the room flips to it the instant a KO lands, and
+   * dropping back to the lobby here would make the results screen vanish
+   * before the player had read a single number.
+   */
+  if (room.phase === 'in-match' || room.phase === 'post-match') return <MatchScreen />;
 
   return (
     <Shell>

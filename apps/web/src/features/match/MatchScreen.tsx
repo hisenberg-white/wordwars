@@ -4,6 +4,7 @@ import { matchManager } from '@/net/MatchManager';
 import { useIdentity } from '@/net/useConnection';
 import { setAppPhase } from '@/store/appPhase';
 import { MatchHud } from './hud/MatchHud';
+import { ResultsScreen } from './results/ResultsScreen';
 
 /**
  * The fight.
@@ -36,6 +37,15 @@ export function MatchScreen() {
     <div className="relative h-screen w-full overflow-hidden bg-void">
       {/* z-0: the arena. Mounted once, never re-rendered. */}
       <GameCanvas className="absolute inset-0 grid place-items-center" />
+
+      {/* z-20: results. Deliberately layered OVER the still-running arena
+          rather than replacing it, so the KO animation and the victory pose
+          stay visible behind the numbers. */}
+      {view.status === 'ended' && view.result && (
+        <div className="absolute inset-0 z-20 overflow-y-auto bg-void/85 backdrop-blur-sm">
+          <ResultsScreen result={view.result} fighters={view.fighters} />
+        </div>
+      )}
 
       {/* z-10: the HUD. Renders once; every update after that is a direct DOM
           write from the game bus, never a re-render. */}

@@ -645,7 +645,39 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
       → DEFERRED: music. Procedural music is a large lift likely to sound bad;
       real tracks land in phase 5 alongside the art. The `master` bus already
       exists for it.
-- [ ] 3.9 Victory/defeat screen + rematch
+- [x] 3.9 Victory/defeat screen + rematch
+      → **This is the one screen where WPM and accuracy are ALLOWED** (§0). During
+      combat they turn the game into a typing test; afterwards they are exactly what
+      a player wants — the story of how the fight was won. Stat rows are ordered by
+      what DECIDED the match rather than what is easiest to compute, so accuracy
+      leads: it is the thing players under-rate and the thing that actually wins.
+      → Stats are shown side by side with the better value highlighted, which turns
+      a table into a scoreboard — the player sees WHERE they lost, not just that
+      they did.
+      → Verdict leads at full size, numbers follow. A player wants to know whether
+      they won before they want to know their WPM.
+      → **Rematch is a mutual vote, not a host command.** After a close match the
+      loser deserves an equal say. Votes are BROADCAST so each side can see the
+      other is still there and still willing — a button giving no feedback until
+      both press it is a button people give up on. The opponent's pending vote
+      changes the label to "Accept rematch" and adds a line, because "Rematch" and
+      "someone is waiting for you" are different levels of urgency.
+      → Agreeing to a rematch auto-readies both players. Making them click twice
+      after already saying yes is a step that only loses people.
+      → **BUG CAUGHT WHILE WIRING:** the room flips to `post-match` the instant a KO
+      lands, and `RoomScreen`/`PlayScreen` only rendered the arena for `in-match` —
+      so the results screen would have VANISHED before the player read a single
+      number. Both now treat post-match as arena-owned.
+      → Results are layered OVER the still-running arena rather than replacing it,
+      so the KO animation and victory pose stay visible behind the numbers.
+      → Guest account prompt appears only AFTER a match, never before or during —
+      the promise is that gameplay is never blocked behind a login. Deliberately a
+      small line of text, not a modal: a modal would stand between the player and
+      the rematch button, which is the one thing we most want them to press.
+      → 175 server + 261 web tests. Live-verified 11 checks end to end: match ends,
+      both clients agree on the winner, stats populate, room enters post-match, a
+      one-sided vote is visible to the opponent, mutual agreement starts a fresh
+      countdown, votes clear, players auto-ready, and a SECOND match actually begins.
 - [ ] 3.10 Reconnect + forfeit
 - [ ] 3.11 **GATE: 20 internal playtest matches. Tune §5.2 before Phase 4.**
 

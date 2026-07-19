@@ -48,6 +48,7 @@ export interface RoomMemberRecord {
   connected: boolean;
   ping: number | null;
   joinedAt: number;
+  wantsRematch: boolean;
 }
 
 /** Ping must move by at least this much before it is worth a broadcast. */
@@ -135,6 +136,7 @@ export class RoomRegistry {
       connected: true,
       ping: null,
       joinedAt: Date.now(),
+      wantsRematch: false,
     });
 
     if (!room.hostId || !room.members.has(room.hostId)) {
@@ -202,6 +204,36 @@ export class RoomRegistry {
     return previous === null || Math.abs(previous - ping) >= PING_BROADCAST_THRESHOLD_MS;
   }
 
+  /**
+   * Records a rematch vote.
+   *
+   * Returns true once EVERY remaining player wants one. A rematch is a mutual
+   * agreement, not a host command — the loser gets an equal say in whether the
+   * fight happens again.
+   */
+  voteRematch(room: LiveRoom, playerId: PlayerId): boolean {
+    const member = room.members.get(playerId);
+    if (!member || member.isSpectator) return false;
+
+    member.wantsRematch = true;
+
+    const players = [...room.members.values()].filter((m) => !m.isSpectator);
+    return players.length >= 2 && players.every((m) => m.wantsRematch);
+  }
+
+  /** Clears votes and ready flags, returning the room to a fresh lobby. */
+  resetForRematch(room: LiveRoom): void {
+    room.phase = 'lobby';
+    room.countdownEndsAt = null;
+
+    for (const member of room.members.values()) {
+      member.wantsRematch = false;
+      // Agreeing to a rematch IS readying up. Making both players click twice
+      // after they have already said yes is a step that only loses people.
+      member.isReady = !member.isSpectator;
+    }
+  }
+
   /** True when the room could legally start a match right now. */
   canStart(room: LiveRoom): boolean {
     const players = [...room.members.values()].filter((m) => !m.isSpectator);
@@ -234,6 +266,7 @@ export class RoomRegistry {
         level: m.identity.level,
         ping: m.ping,
         connected: m.connected,
+        wantsRematch: m.wantsRematch,
       }));
 
     return {

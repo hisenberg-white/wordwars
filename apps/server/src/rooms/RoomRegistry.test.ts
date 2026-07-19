@@ -195,6 +195,72 @@ describe('RoomRegistry', () => {
     });
   });
 
+  describe('rematch', () => {
+    function playedRoom() {
+      const rooms = new RoomRegistry();
+      const room = rooms.create();
+      rooms.addMember(room, player('alice'), NINJA);
+      rooms.addMember(room, player('bob'), NINJA);
+      room.phase = 'post-match';
+      return { rooms, room };
+    }
+
+    /** A rematch is a mutual agreement, not a host command. */
+    it('needs every player to agree', () => {
+      const { rooms, room } = playedRoom();
+
+      expect(rooms.voteRematch(room, asPlayerId('alice'))).toBe(false);
+      expect(rooms.voteRematch(room, asPlayerId('bob'))).toBe(true);
+    });
+
+    it('shows a pending vote to everyone', () => {
+      const { rooms, room } = playedRoom();
+      rooms.voteRematch(room, asPlayerId('alice'));
+
+      const state = rooms.toState(room);
+      expect(state.members.find((m) => m.nickname === 'alice')?.wantsRematch).toBe(true);
+      expect(state.members.find((m) => m.nickname === 'bob')?.wantsRematch).toBe(false);
+    });
+
+    it('ignores spectators, who cannot hold a rematch hostage', () => {
+      const { rooms, room } = playedRoom();
+      rooms.addMember(room, player('watcher'), NINJA, true);
+
+      expect(rooms.voteRematch(room, asPlayerId('watcher'))).toBe(false);
+      rooms.voteRematch(room, asPlayerId('alice'));
+      expect(rooms.voteRematch(room, asPlayerId('bob'))).toBe(true);
+    });
+
+    it('cannot be agreed alone after the opponent leaves', () => {
+      const { rooms, room } = playedRoom();
+      rooms.removeMember(room, asPlayerId('bob'));
+
+      expect(rooms.voteRematch(room, asPlayerId('alice'))).toBe(false);
+    });
+
+    /** Agreeing to a rematch IS readying up — clicking twice only loses people. */
+    it('resets to a ready lobby', () => {
+      const { rooms, room } = playedRoom();
+      rooms.voteRematch(room, asPlayerId('alice'));
+      rooms.voteRematch(room, asPlayerId('bob'));
+
+      rooms.resetForRematch(room);
+
+      expect(room.phase).toBe('lobby');
+      expect(rooms.canStart(room)).toBe(true);
+      expect(rooms.toState(room).members.every((m) => !m.wantsRematch)).toBe(true);
+    });
+
+    it('does not ready spectators on reset', () => {
+      const { rooms, room } = playedRoom();
+      rooms.addMember(room, player('watcher'), NINJA, true);
+
+      rooms.resetForRematch(room);
+
+      expect(rooms.toState(room).members.find((m) => m.isSpectator)?.isReady).toBe(false);
+    });
+  });
+
   it('counts players across all rooms', () => {
     const rooms = new RoomRegistry();
     const a = rooms.create();

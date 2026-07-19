@@ -43,8 +43,8 @@ export function PlayScreen() {
   };
 
   // Quick match goes straight from the countdown into the arena, with no
-  // lobby in between.
-  if (room?.phase === 'in-match') return <MatchScreen />;
+  // lobby in between. `post-match` keeps the results screen up.
+  if (room?.phase === 'in-match' || room?.phase === 'post-match') return <MatchScreen />;
 
   return (
     <div className="flex min-h-screen flex-col">

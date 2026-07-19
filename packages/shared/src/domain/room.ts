@@ -51,6 +51,14 @@ export interface RoomMember {
   /** Round-trip time in ms, refreshed periodically. Null until first sample. */
   readonly ping: number | null;
   readonly connected: boolean;
+  /**
+   * Whether this player has asked for a rematch.
+   *
+   * Visible to everyone on purpose: after a close match the losing player
+   * wants to know the winner is still there before committing, and a button
+   * that gives no feedback until both sides press it makes people leave.
+   */
+  readonly wantsRematch: boolean;
 }
 
 export interface ChatMessage {

@@ -179,7 +179,7 @@ export function createGatewayWithContext(httpServer: HttpServer): Gateway {
     registerGuestHandlers(socket);
     registerMatchmakingHandlers(socket, ctx);
     registerRoomHandlers(socket, ctx, io);
-    registerMatchHandlers(socket, ctx);
+    registerMatchHandlers(socket, ctx, io);
 
     /**
      * Heartbeat / clock sync.
