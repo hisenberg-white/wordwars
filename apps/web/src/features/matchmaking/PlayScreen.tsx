@@ -59,6 +59,14 @@ export function PlayScreen() {
           {status === 'found' && identity && opponent ? (
             <OpponentFound self={identity} opponent={opponent} />
           ) : status === 'error' ? (
+            /*
+             * A real failure — the server refused or never answered.
+             *
+             * NOT the same thing as "nobody is here yet". An empty queue is the
+             * normal state of a new game and telling somebody the system failed
+             * because nobody else happens to be online is both untrue and
+             * discouraging.
+             */
             <div className="flex flex-col items-center gap-5 text-center">
               <p className="font-display text-2xl text-danger">Matchmaking failed</p>
               <p className="max-w-sm text-sm text-ink-dim">{error}</p>

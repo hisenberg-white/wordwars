@@ -1,4 +1,4 @@
-import { ackError, ackOk, asRoomId, matchmakingJoinSchema } from '@wordwars/shared';
+import { ackOk, asRoomId, matchmakingJoinSchema } from '@wordwars/shared';
 import { logger } from '../../logger.js';
 import type { RealtimeContext } from '../context.js';
 import type { GameServer, GameSocket } from '../gateway.js';
@@ -24,8 +24,17 @@ export function registerMatchmakingHandlers(
     validated(matchmakingJoinSchema, (payload, ack) => {
       const { playerId } = socket.data;
 
+      /*
+       * Asking again for a queue you are already in is a no-op, not an error.
+       *
+       * Clients re-send this for ordinary reasons — a re-render, a reconnect,
+       * an impatient second click — and answering with an error meant the
+       * player saw "Matchmaking failed" while the server was still searching
+       * for them perfectly happily. The honest answer to "please queue me" when
+       * already queued is yes.
+       */
       if (ctx.matchmaking.isQueued(playerId)) {
-        ack(ackError('ALREADY_IN_QUEUE'));
+        ack(ackOk({ queuedAt: Date.now() }));
         return;
       }
 

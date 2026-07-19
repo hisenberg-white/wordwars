@@ -63,6 +63,19 @@ class MatchmakingManager {
     this.bind();
 
     /*
+     * Already looking? Do nothing.
+     *
+     * The guard lives HERE, not in the component, because a component's
+     * `status` comes from the render it closed over. React StrictMode
+     * double-invokes effects in development, and both invocations see the
+     * pre-search value — so a screen guarding on `status === 'idle'` queues
+     * twice regardless. The second request came back ALREADY_IN_QUEUE and the
+     * player was shown "Matchmaking failed" while the server was, in fact,
+     * happily searching for them.
+     */
+    if (this.snapshot.status === 'searching' || this.snapshot.status === 'found') return;
+
+    /*
      * Quick match lands the player in a room they never asked for, so the room
      * listeners have to exist BEFORE pairing — by the time `mm:found` arrives
      * the countdown is 1.8 seconds away, and a listener attached after that is
@@ -84,6 +97,13 @@ class MatchmakingManager {
         return;
       }
       if (!response.ok) {
+        /*
+         * Being told we are already queued is not a failure — it is the
+         * answer we wanted. Surfacing it as an error is how a player who is
+         * genuinely in the queue gets shown a failure card.
+         */
+        if (response.error.code === 'ALREADY_IN_QUEUE') return;
+
         this.publish({ status: 'error', error: response.error.code });
       }
       // On success the server has already emitted `mm:searching`, which carries

@@ -36,6 +36,9 @@ function formatElapsed(ms: number): string {
   return m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`;
 }
 
+/** How long before an empty queue is worth mentioning rather than spinning at. */
+const QUIET_AFTER_MS = 20_000;
+
 export function SearchingPanel({
   queuedAt,
   estimatedWaitMs,
@@ -62,6 +65,19 @@ export function SearchingPanel({
 
   const estimate = estimatedWaitMs !== null ? Math.round(estimatedWaitMs / 1000) : null;
 
+  /*
+   * After a while, say so — but keep looking.
+   *
+   * An empty queue is the ordinary state of a new game, not a failure, so the
+   * search is never cancelled on the player's behalf and nothing turns red.
+   * What changes is honesty: a spinner that has been going for a minute with
+   * "usually about 2s" underneath it is quietly lying, and the player is left
+   * wondering whether it is broken. Naming the situation, and offering the
+   * thing that actually works — bring a friend, open another window — respects
+   * them more than an animation that pretends.
+   */
+  const quiet = elapsed > QUIET_AFTER_MS;
+
   return (
     <div className="flex flex-col items-center text-center">
       <PanelLabel className="text-p2">Searching for an opponent</PanelLabel>
@@ -82,18 +98,31 @@ export function SearchingPanel({
         </span>
       </div>
 
-      {estimate !== null && (
-        <p className="mt-6 text-sm text-ink-dim">
-          Usually about <span className="text-ink">{estimate}s</span>
+      {quiet ? (
+        <p className="mt-6 max-w-sm text-sm leading-relaxed text-ink-dim">
+          Nobody else is queuing right now. Still looking — this will connect the moment someone
+          arrives.
         </p>
+      ) : (
+        estimate !== null && (
+          <p className="mt-6 text-sm text-ink-dim">
+            Usually about <span className="text-ink">{estimate}s</span>
+          </p>
+        )
       )}
 
-      <p
-        key={tipIndex}
-        className="animate-rise mt-8 h-12 max-w-sm text-balance text-sm leading-relaxed text-ink-faint"
-      >
-        {TIPS[tipIndex]}
-      </p>
+      {quiet ? (
+        <p className="mt-8 h-12 max-w-sm text-balance text-sm leading-relaxed text-ink-faint">
+          Open the game in a second window to fight yourself, or send a friend the link.
+        </p>
+      ) : (
+        <p
+          key={tipIndex}
+          className="animate-rise mt-8 h-12 max-w-sm text-balance text-sm leading-relaxed text-ink-faint"
+        >
+          {TIPS[tipIndex]}
+        </p>
+      )}
 
       <Button variant="ghost" size="sm" onClick={onCancel} className="mt-4">
         Cancel
