@@ -4,6 +4,9 @@ import {
   applyWordAttempt,
   averageWpm,
   createMatchState,
+  isIntermission,
+  scoreOf,
+  startNextRound,
   tick,
   type EngineFighter,
   type EngineMatchState,
@@ -54,6 +57,14 @@ export interface MatchParticipant {
   readonly level: number;
 }
 
+/**
+ * The pause between rounds of a best-of-3/5.
+ *
+ * Long enough to read the score, short enough that nobody reaches for another
+ * tab. This is the one moment in a match when both players look up.
+ */
+export const INTERMISSION_MS = 4_000;
+
 export interface ServerMatchOptions {
   readonly roomId: string;
   readonly participants: readonly [MatchParticipant, MatchParticipant];
@@ -101,6 +112,7 @@ export class ServerMatch {
   private eventTimer: ReturnType<typeof setInterval> | null = null;
   private snapshotTimer: ReturnType<typeof setInterval> | null = null;
   private tickTimer: ReturnType<typeof setInterval> | null = null;
+  private intermissionTimer: ReturnType<typeof setTimeout> | null = null;
 
   private startedAt = 0;
   private finished = false;
@@ -142,6 +154,7 @@ export class ServerMatch {
       matchId: this.matchId,
       seed,
       players: [a.playerId, b.playerId],
+      roundCount: options.roundCount,
       enableUltimate: options.enableUltimate,
       enableCrits: options.enableCrits,
     });
@@ -241,7 +254,40 @@ export class ServerMatch {
       // event that must never arrive late.
       this.flushEvents();
       this.finish('knockout');
+      return;
     }
+
+    // A round ended but the match did not: hold, then start the next one.
+    if (isIntermission(this.state)) {
+      this.flushEvents();
+      this.beginIntermission();
+    }
+  }
+
+  /**
+   * The pause between rounds.
+   *
+   * Long enough to read the score and feel the round land, short enough that
+   * nobody reaches for another tab. Fighting games make a meal of this moment
+   * and they are right to — it is the only time in a match where both players
+   * look up.
+   */
+  private beginIntermission(): void {
+    if (this.intermissionTimer) return;
+
+    this.intermissionTimer = setTimeout(() => {
+      this.intermissionTimer = null;
+      if (this.finished) return;
+
+      startNextRound(this.state, this.elapsedMs());
+
+      // The stream keeps advancing across rounds, so the next round opens on
+      // fresh text rather than replaying the last one.
+      this.streamAhead();
+      this.sink.snapshot(this.matchId, this.snapshot());
+    }, INTERMISSION_MS);
+
+    this.intermissionTimer.unref?.();
   }
 
   /** Ends the match early — forfeit, disconnect, or room teardown. */
@@ -262,6 +308,8 @@ export class ServerMatch {
       phase: this.state.phase,
       rageMultiplier: this.state.rageMultiplier,
       elapsedMs: this.elapsedMs(),
+      round: this.state.round,
+      score: scoreOf(this.state),
       fighters: this.state.fighters.map((f) => ({
         playerId: f.playerId,
         hp: f.hp,
@@ -271,6 +319,7 @@ export class ServerMatch {
         ultimateCharge: f.ultimateCharge,
         ultimateReady: f.ultimateReady,
         wordIndex: f.wordIndex,
+        roundsWon: f.roundsWon,
       })),
     };
   }
@@ -414,6 +463,7 @@ export class ServerMatch {
       peakWpm: fighter.peakWpm,
       maxCombo: fighter.maxCombo,
       ultimatesUsed: fighter.ultimatesUsed,
+      roundsWon: fighter.roundsWon,
     };
   }
 
@@ -428,9 +478,13 @@ export class ServerMatch {
     if (this.eventTimer) clearInterval(this.eventTimer);
     if (this.snapshotTimer) clearInterval(this.snapshotTimer);
     if (this.tickTimer) clearInterval(this.tickTimer);
+    // A forfeit or disconnect DURING an intermission must not resurrect the
+    // match four seconds later by starting a round nobody is in.
+    if (this.intermissionTimer) clearTimeout(this.intermissionTimer);
     this.eventTimer = null;
     this.snapshotTimer = null;
     this.tickTimer = null;
+    this.intermissionTimer = null;
   }
 
   /** True if either player tripped a timing heuristic (plan §4.3). */

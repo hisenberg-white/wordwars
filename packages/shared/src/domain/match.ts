@@ -6,7 +6,14 @@ export const GAME_MODES = ['1v1'] as const;
 /** Future: '2v2' | '4v4' | 'ffa' | 'boss' — the contract is shaped to absorb them. */
 export type GameMode = (typeof GAME_MODES)[number];
 
-export const MATCH_PHASES = ['countdown', 'combat', 'knockout', 'results'] as const;
+/**
+ * `intermission` is the gap between rounds of a best-of-3/5.
+ *
+ * Distinct from `knockout`, which means the MATCH is decided. Collapsing the
+ * two would make "someone hit zero HP" and "someone won" the same event, and
+ * they are only the same in a best-of-1.
+ */
+export const MATCH_PHASES = ['countdown', 'combat', 'intermission', 'knockout', 'results'] as const;
 export type MatchPhase = (typeof MATCH_PHASES)[number];
 
 export const DIFFICULTIES = ['easy', 'normal', 'hard', 'code'] as const;
@@ -53,6 +60,10 @@ export interface MatchSnapshot {
   /** Sudden-death multiplier; 1 until Rage engages. */
   readonly rageMultiplier: number;
   readonly elapsedMs: number;
+  /** Current round, 1-based. Always 1 in a best-of-1. */
+  readonly round: number;
+  /** Rounds won so far, indexed by fighter slot. */
+  readonly score: readonly [number, number];
 }
 
 /** 30Hz narration batch. */

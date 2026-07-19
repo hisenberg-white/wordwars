@@ -60,7 +60,11 @@ export function MatchScreen() {
       {/* z-10: the HUD. Renders once; every update after that is a direct DOM
           write from the game bus, never a re-render. */}
       {view.config && view.fighters.length === 2 ? (
-        <MatchHud fighters={view.fighters} maxHp={view.config.maxHp} />
+        <MatchHud
+          fighters={view.fighters}
+          maxHp={view.config.maxHp}
+          roundCount={view.config.roundCount}
+        />
       ) : (
         <p className="absolute inset-x-0 top-1/2 text-center text-sm text-ink-dim">
           Waiting for the match to begin…

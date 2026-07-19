@@ -951,7 +951,46 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
 - [ ] 5.4 Ads (guarded against combat phase)
 - [ ] 5.5 Settings (volumes, quality, accessibility)
 - [ ] 5.6 Spectator mode
-- [ ] 5.7 Best-of-3/5 rounds
+- [x] 5.7 Best-of-3/5 rounds
+      → **Fixed a setting that was lying.** `roundCount` has been in the lobby
+      since 2.5, shown as "Best of 3", plumbed all the way into `ServerMatch` —
+      and then ignored. Every match ended on the first knockdown. A setting
+      that lies is worse than one that does not exist.
+      → Rounds live in the ENGINE, where they are pure and testable. A KO now
+      ends the ROUND; the match ends when someone takes the majority.
+      `intermission` is its own phase, distinct from `knockout`, because
+      "someone hit zero" and "someone won" are only the same in a best-of-1.
+      → What resets between rounds IS the design: HP, combo, Ultimate charge and
+      Rage reset; the word stream and career stats do NOT. Carrying meter would
+      let whoever was mid-charge open the next round with an instant Ultimate —
+      an opening nobody can answer, awarded for losing. Resetting the word
+      stream would replay round one's text. Rage resets because it exists to
+      stop ONE round dragging; carried, it would open round three at maximum
+      and end it in seconds.
+      → **TWO desync bugs found by the live check, both silent and fatal.**
+      (1) Words already IN FLIGHT when a round ends were refused, leaving the
+      client's word index one ahead of the server's forever — and since the
+      server demands an exact index match, every later word was rejected. The
+      player just stops being able to fight, with no error. Intermission words
+      are now CONSUMED: no damage, but the index advances.
+      (2) The same failure from ANY dropped word — the live bot tripped the rate
+      limiter and ended 440 words out of step. The durable fix is client-side:
+      the cursor now resyncs to the authoritative index from the snapshot,
+      tolerating only what in-flight traffic can explain.
+      → Client input pauses during an intermission (pause, not detach — detaching
+      would lose the in-progress word and its keystroke timings).
+      → The predictor is re-seeded at a round boundary. It is normally left to
+      drift, but a new round is where drift becomes visible: it would still hold
+      the previous round's zeroed HP, conclude the target was already dead, and
+      cost that player prediction for the rest of the match — their attacks
+      feeling a round-trip slower than their opponent's for no visible reason.
+      → `roundsWon` is on the RESULT, not just the snapshot: the last snapshot
+      before a KO is up to 100ms stale, so it cannot know the final score.
+      → Score pips beside the VS marker and a between-rounds card, both driven
+      by direct DOM writes (D3). A best-of-1 renders no round furniture at all.
+      → 126 engine tests. **Live-verified 14 checks** on a real best-of-3: no
+      match end on the first knockdown, exactly one knockout, HP restored, the
+      loser revived, the word stream unbroken, and a 2–0 result.
 - [ ] 5.8 Load test to 1000 concurrent matches
 - [ ] 5.9 Docs
 

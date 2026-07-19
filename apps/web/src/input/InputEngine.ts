@@ -61,6 +61,16 @@ export class InputEngine {
   private keyTimes: number[] = [];
 
   private attached = false;
+  /**
+   * Paused between rounds.
+   *
+   * Not merely cosmetic. If keystrokes kept committing during an intermission
+   * the local `wordIndex` would advance while the server — which refuses words
+   * outside combat — left its own where it was. The two would never line up
+   * again, and every word of the next round would be rejected as the wrong
+   * index. The player would simply stop being able to play.
+   */
+  private paused = false;
   private startedAtMs = 0;
   private detachFn: (() => void) | null = null;
 
@@ -89,6 +99,21 @@ export class InputEngine {
     target.addEventListener('keydown', this.handleKeyDown as EventListener);
     this.detachFn = () =>
       target.removeEventListener('keydown', this.handleKeyDown as EventListener);
+  }
+
+  /**
+   * Stops accepting input without detaching.
+   *
+   * Detaching and re-attaching would lose the in-progress word and the
+   * keystroke timings with it; pausing keeps the engine intact for the next
+   * round, which continues from the same word stream.
+   */
+  setPaused(paused: boolean): void {
+    this.paused = paused;
+  }
+
+  get isPaused(): boolean {
+    return this.paused;
   }
 
   detach(): void {
@@ -128,12 +153,18 @@ export class InputEngine {
     return this.words[this.wordIndex] ?? null;
   }
 
+  /** Where the cursor is, so drift against the server can be measured. */
+  get index(): number {
+    return this.wordIndex;
+  }
+
   /**
    * Jumps the cursor to a word index.
    *
-   * Used only on reconnect: the server is authoritative about how far a player
-   * got, and a returning client must resume from THERE rather than from the
-   * start of the text it was just re-sent.
+   * Used on reconnect, and to resynchronise when the client's count has drifted
+   * from the server's: the server is authoritative about how far a player got,
+   * and a client must resume from THERE rather than from wherever it thinks it
+   * reached.
    */
   seek(wordIndex: number): void {
     this.wordIndex = Math.max(0, Math.min(wordIndex, this.words.length));
@@ -185,6 +216,9 @@ export class InputEngine {
     // what the server uses to judge tempo, and it must measure the player's
     // hands rather than our own dispatch cost.
     const at = this.now();
+
+    // Between rounds nothing counts — see `paused`.
+    if (this.paused) return;
 
     // Mid-composition keystrokes are not real characters yet; acting on them
     // double-types on IME keyboards.

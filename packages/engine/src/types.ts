@@ -36,6 +36,9 @@ export interface EngineFighter {
   firstWordAtMs: number | null;
   /** Best instantaneous WPM observed, for the results screen. */
   peakWpm: number;
+
+  /** Rounds taken in a best-of-3/5. Always 0 or 1 in a best-of-1. */
+  roundsWon: number;
 }
 
 export interface EngineMatchState {
@@ -45,10 +48,23 @@ export interface EngineMatchState {
   readonly enableUltimate: boolean;
   readonly enableCrits: boolean;
 
+  /** Best-of-N. 1 means a single decisive knockout. */
+  readonly roundCount: 1 | 3 | 5;
+
   phase: MatchPhase;
   /** Monotonic counter, incremented per resolved action. Orders events. */
   tickCount: number;
   elapsedMs: number;
+  /** Current round, 1-based. */
+  round: number;
+  /**
+   * When the current round began, match-relative.
+   *
+   * Rage is measured from HERE, not from the start of the match: rage exists to
+   * stop one round dragging, and carrying it across rounds would open round 3
+   * at maximum multiplier and end it in seconds.
+   */
+  roundStartedMs: number;
   rageMultiplier: number;
 
   fighters: readonly [EngineFighter, EngineFighter];
@@ -57,6 +73,7 @@ export interface EngineMatchState {
 }
 
 export interface EngineConfig {
+  readonly roundCount?: 1 | 3 | 5;
   readonly matchId: string;
   readonly seed: number;
   readonly players: readonly [PlayerId, PlayerId];
@@ -82,7 +99,12 @@ export interface WordAttempt {
   readonly atMs: number;
 }
 
-export type RejectionReason = 'unknown-player' | 'wrong-word-index' | 'match-over';
+export type RejectionReason =
+  | 'unknown-player'
+  | 'wrong-word-index'
+  | 'match-over'
+  /** Landed between rounds: consumed to keep indices aligned, but scored nothing. */
+  | 'intermission';
 
 /** What changed as a result of an action. */
 export interface MatchDelta {

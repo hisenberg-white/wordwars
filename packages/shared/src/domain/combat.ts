@@ -91,7 +91,24 @@ export interface KnockoutEvent extends BaseEvent {
   readonly loser: PlayerId;
 }
 
+/**
+ * A round ended but the match did not.
+ *
+ * Carries the running score, because the number that matters between rounds is
+ * "2–1", not "someone lost".
+ */
+export interface RoundEndEvent extends BaseEvent {
+  readonly type: 'round-end';
+  readonly winner: PlayerId;
+  readonly loser: PlayerId;
+  /** Round just finished, 1-based. */
+  readonly round: number;
+  /** Rounds won so far, indexed by fighter slot. */
+  readonly score: readonly [number, number];
+}
+
 export type CombatEvent =
+  | RoundEndEvent
   | AttackEvent
   | MissEvent
   | ComboTierEvent
@@ -116,6 +133,8 @@ export interface FighterState {
   readonly ultimateReady: boolean;
   /** Index of the next word this player must type. */
   readonly wordIndex: number;
+  /** Rounds taken in a best-of-3/5. */
+  readonly roundsWon: number;
 }
 
 /** End-of-match per-player summary. Feeds the results screen and the DB. */
@@ -130,4 +149,12 @@ export interface FighterResult {
   readonly peakWpm: number;
   readonly maxCombo: number;
   readonly ultimatesUsed: number;
+  /**
+   * Rounds taken. Always 0 or 1 in a best-of-1.
+   *
+   * On the result rather than only on the snapshot, because the results screen
+   * for a best-of-3 has to be able to say "2–1" — and the last snapshot before
+   * a knockout is up to 100ms stale, so it does not know the final score.
+   */
+  readonly roundsWon: number;
 }

@@ -21,12 +21,27 @@ export interface FighterHud {
 export interface HudState {
   readonly fighters: readonly [FighterHud, FighterHud];
   readonly rageMultiplier: number;
+  /** Current round, 1-based. Always 1 in a best-of-1. */
+  readonly round: number;
+  /** Rounds won, indexed by fighter slot. */
+  readonly score: readonly [number, number];
+  /**
+   * True between rounds.
+   *
+   * The HUD needs this as well as the score: during an intermission the fight
+   * is frozen and the typing band must stop accepting input, or a player keeps
+   * attacking a fighter who is already down.
+   */
+  readonly intermission: boolean;
 }
 
 export function createHudState(players: readonly [PlayerId, PlayerId], maxHp: number): HudState {
   return {
     fighters: [blank(players[0], maxHp), blank(players[1], maxHp)],
     rageMultiplier: 1,
+    round: 1,
+    score: [0, 0],
+    intermission: false,
   };
 }
 
@@ -80,6 +95,21 @@ export function applyEvent(state: HudState, event: CombatEvent): HudState {
         fighter.playerId === event.loser ? { ...fighter, hp: 0 } : fighter,
       );
 
+    /*
+     * A round ended but the match did not.
+     *
+     * The score comes from the event rather than being counted here: the
+     * server already decided it, and a client that tallies its own rounds is
+     * one dropped packet away from disagreeing about who is winning.
+     */
+    case 'round-end': {
+      const dropped = map(state, (fighter) =>
+        fighter.playerId === event.loser ? { ...fighter, hp: 0 } : fighter,
+      );
+
+      return { ...dropped, round: event.round, score: event.score, intermission: true };
+    }
+
     case 'rage':
       return { ...state, rageMultiplier: event.multiplier };
 
@@ -98,6 +128,11 @@ export function reconcile(state: HudState, snapshot: MatchSnapshot): HudState {
   return {
     ...state,
     rageMultiplier: snapshot.rageMultiplier,
+    round: snapshot.round,
+    score: snapshot.score,
+    // The server decides when the next round starts, so the intermission ends
+    // when IT says so — not on a client timer that could drift out of step.
+    intermission: snapshot.phase === 'intermission',
     fighters: state.fighters.map((fighter) => {
       const authoritative = snapshot.fighters.find((f) => f.playerId === fighter.playerId);
       if (!authoritative) return fighter;

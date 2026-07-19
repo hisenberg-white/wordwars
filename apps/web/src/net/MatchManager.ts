@@ -22,6 +22,14 @@ export type MatchStatus = 'idle' | 'live' | 'ended';
  * delivered through `onEvent` / `onSnapshot` callbacks straight to Phaser and
  * to HUD elements that write the DOM directly.
  */
+/**
+ * How far ahead of the server the cursor may legitimately be.
+ *
+ * Purely in-flight words: at a 10Hz snapshot rate and human typing speeds this
+ * is comfortably under three. Anything beyond it means words were lost.
+ */
+const MAX_INFLIGHT_WORDS = 4;
+
 export interface MatchSnapshotView {
   readonly status: MatchStatus;
   readonly config: MatchConfig | null;
@@ -85,6 +93,7 @@ class MatchManager {
         seed: config.seed,
         players: [fighters[0]!.playerId, fighters[1]!.playerId],
         maxHp: config.maxHp,
+        roundCount: config.roundCount,
         enableUltimate: config.enableUltimate,
         enableCrits: config.enableCrits,
       });
@@ -109,6 +118,11 @@ class MatchManager {
     });
 
     socket.on('match:state', (snapshot) => {
+      // The snapshot is the authority on whether we are between rounds.
+      this.setIntermission(snapshot.phase === 'intermission');
+      this.syncLocalRound(snapshot);
+      this.resyncWordIndex(snapshot);
+
       for (const listener of this.stateListeners) listener(snapshot);
     });
 
@@ -141,6 +155,79 @@ class MatchManager {
 
     // A committed word fires locally first, then goes to the server.
     this.input.onCommit((commit) => this.handleCommit(commit));
+  }
+
+  /**
+   * Freezes input between rounds and thaws it when the server says so.
+   *
+   * Driven by the authoritative snapshot rather than a local timer: the server
+   * decides when the next round begins, and a client counting down on its own
+   * would start typing into a round that has not opened yet.
+   */
+  private setIntermission(active: boolean): void {
+    if (this.input.isPaused === active) return;
+    this.input.setPaused(active);
+  }
+
+  /**
+   * Re-seeds the predictor at a round boundary.
+   *
+   * The local engine exists only to make the player's OWN attacks land on the
+   * same frame as the keystroke, so it is normally left to drift — the server
+   * owns the truth and `filterPredicted` drops anything decisive. A round
+   * change is the one moment that drift becomes visible: the predictor still
+   * has the previous round's zeroed HP, so its very first prediction of the
+   * new round would conclude the target was already dead, halt, and cost that
+   * player prediction for the rest of the match. Their attacks would feel a
+   * round-trip slower than their opponent's for no reason they could see.
+   */
+  private syncLocalRound(snapshot: MatchSnapshot): void {
+    const local = this.local;
+    if (!local || local.phase === snapshot.phase) return;
+
+    local.phase = snapshot.phase;
+    if (snapshot.phase !== 'combat') return;
+
+    for (const fighter of local.fighters) {
+      const authoritative = snapshot.fighters.find((f) => f.playerId === fighter.playerId);
+      if (!authoritative) continue;
+
+      fighter.hp = authoritative.hp;
+      fighter.combo = authoritative.combo;
+      fighter.ultimateCharge = authoritative.ultimateCharge;
+      fighter.ultimateReady = authoritative.ultimateReady;
+      fighter.roundsWon = authoritative.roundsWon;
+    }
+  }
+
+  /**
+   * Realigns the cursor when it has drifted from the server's.
+   *
+   * A word can fail to reach the engine for reasons the client never learns
+   * about — a rate-limited burst, a dropped packet, a word already in flight
+   * when a round ended. Every one of them leaves the client's index ahead of
+   * the server's, and because the server refuses any word whose index does not
+   * match exactly, the mismatch NEVER heals on its own: every subsequent word
+   * is rejected and the player silently stops being able to fight. No error,
+   * no way back, and nothing on screen to explain it.
+   *
+   * So the server's count wins. The tolerance exists because the client is
+   * *legitimately* ahead by whatever is in flight — correcting that would
+   * fight prediction and stutter the cursor on every snapshot.
+   */
+  private resyncWordIndex(snapshot: MatchSnapshot): void {
+    if (!this.selfId || snapshot.phase !== 'combat') return;
+
+    const authoritative = snapshot.fighters.find((f) => f.playerId === this.selfId);
+    if (!authoritative) return;
+
+    const drift = this.input.index - authoritative.wordIndex;
+
+    // Behind the server is always wrong. Far ahead is more than in-flight
+    // traffic can explain, so something was genuinely lost.
+    if (drift >= 0 && drift <= MAX_INFLIGHT_WORDS) return;
+
+    this.input.seek(authoritative.wordIndex);
   }
 
   private handleCommit(commit: WordCommit): void {

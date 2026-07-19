@@ -39,8 +39,12 @@ function createFighter(playerId: PlayerId, slot: number): EngineFighter {
     lastWordAtMs: null,
     firstWordAtMs: null,
     peakWpm: 0,
+    roundsWon: 0,
   };
 }
+
+/** Rounds needed to take the match: 1, 2 or 3. */
+export const roundsToWin = (roundCount: 1 | 3 | 5): number => Math.ceil(roundCount / 2);
 
 export function createMatchState(config: EngineConfig): EngineMatchState {
   const maxHp = config.maxHp ?? MAX_HP;
@@ -58,17 +62,24 @@ export function createMatchState(config: EngineConfig): EngineMatchState {
     maxHp,
     enableUltimate: config.enableUltimate ?? true,
     enableCrits: config.enableCrits ?? true,
+    roundCount: config.roundCount ?? 1,
     phase: 'combat',
     tickCount: 0,
     elapsedMs: 0,
+    round: 1,
+    roundStartedMs: 0,
     rageMultiplier: 1,
     fighters,
     winnerId: null,
   };
 }
 
+/** The MATCH is over. An intermission is not terminal — more rounds follow. */
 export const isTerminal = (state: EngineMatchState): boolean =>
   state.phase === 'knockout' || state.phase === 'results';
+
+/** Between rounds: input is refused, but the match continues. */
+export const isIntermission = (state: EngineMatchState): boolean => state.phase === 'intermission';
 
 function findFighter(state: EngineMatchState, playerId: PlayerId): EngineFighter | null {
   return state.fighters.find((f) => f.playerId === playerId) ?? null;
@@ -103,6 +114,25 @@ export function applyWordAttempt(state: EngineMatchState, attempt: WordAttempt):
     return { ...EMPTY_DELTA, rejected: 'wrong-word-index' };
   }
 
+  /*
+   * A word that arrives DURING an intermission is consumed, not refused.
+   *
+   * It deals no damage — the round is over and the loser is on the floor —
+   * but the fighter's word index still advances, because the client already
+   * advanced its own when it sent it. This is not a nicety: a client pauses
+   * input the moment it learns a round ended, but words already in flight
+   * cannot be recalled, and network latency guarantees there will be some.
+   * Refusing them would leave the two indices permanently one apart, and every
+   * word of the next round would be rejected as the wrong index. The player
+   * would simply stop being able to play, with no error and no way back.
+   */
+  if (state.phase === 'intermission') {
+    actor.wordIndex += 1;
+    return { ...EMPTY_DELTA, rejected: 'intermission' };
+  }
+
+  if (state.phase !== 'combat') return { ...EMPTY_DELTA, rejected: 'match-over' };
+
   const target = opponentOf(state, actor);
   const events: CombatEvent[] = [];
 
@@ -117,9 +147,18 @@ export function applyWordAttempt(state: EngineMatchState, attempt: WordAttempt):
 
   events.push(...resolveHit(state, actor, target, attempt));
 
-  const terminal = target.hp <= 0;
-  if (terminal) {
-    target.hp = 0;
+  if (target.hp > 0) return { events, terminal: false };
+
+  /*
+   * Someone hit zero. In a best-of-1 that ends the match; otherwise it ends
+   * the ROUND, and the match continues until one fighter takes the majority.
+   */
+  target.hp = 0;
+  actor.roundsWon += 1;
+
+  const decided = actor.roundsWon >= roundsToWin(state.roundCount);
+
+  if (decided) {
     state.phase = 'knockout';
     state.winnerId = actor.playerId;
 
@@ -129,9 +168,22 @@ export function applyWordAttempt(state: EngineMatchState, attempt: WordAttempt):
       winner: actor.playerId,
       loser: target.playerId,
     });
+
+    return { events, terminal: true };
   }
 
-  return { events, terminal };
+  state.phase = 'intermission';
+
+  events.push({
+    type: 'round-end',
+    t: state.tickCount,
+    winner: actor.playerId,
+    loser: target.playerId,
+    round: state.round,
+    score: scoreOf(state),
+  });
+
+  return { events, terminal: false };
 }
 
 /**
@@ -263,11 +315,12 @@ function recordTiming(actor: EngineFighter, attempt: WordAttempt, deltaMs: numbe
  * its render loop — both need the Rage transition without a word being typed.
  */
 export function tick(state: EngineMatchState, elapsedMs: number): MatchDelta {
-  if (isTerminal(state)) return EMPTY_DELTA;
+  if (state.phase !== 'combat') return EMPTY_DELTA;
 
   state.elapsedMs = Math.max(state.elapsedMs, elapsedMs);
 
-  const next = rageMultiplier(state.elapsedMs);
+  // Measured from the start of THIS round — see `roundStartedMs`.
+  const next = rageMultiplier(state.elapsedMs - state.roundStartedMs);
 
   if (next === state.rageMultiplier) return EMPTY_DELTA;
 
@@ -278,6 +331,42 @@ export function tick(state: EngineMatchState, elapsedMs: number): MatchDelta {
     events: [{ type: 'rage', t: state.tickCount, multiplier: next }],
     terminal: false,
   };
+}
+
+/** Rounds won, indexed by fighter slot. */
+export function scoreOf(state: EngineMatchState): [number, number] {
+  return [state.fighters[0].roundsWon, state.fighters[1].roundsWon];
+}
+
+/**
+ * Begins the next round after an intermission.
+ *
+ * What resets and what does NOT is the whole design of a multi-round match:
+ *
+ *   - **HP, combo and Ultimate charge reset.** Carrying meter would let whoever
+ *     was mid-charge when the round ended open the next one with an instant
+ *     Ultimate — an opening nuke nobody could answer, awarded for losing.
+ *   - **Rage resets**, because it exists to stop a single round dragging.
+ *   - **Word index does NOT reset.** The stream keeps advancing, so round two
+ *     is fresh text rather than a replay of round one.
+ *   - **Career stats do NOT reset.** Words, damage and accuracy accumulate
+ *     across the whole match, because that is what the results screen reports.
+ */
+export function startNextRound(state: EngineMatchState, atMs: number): void {
+  if (state.phase !== 'intermission') return;
+
+  for (const fighter of state.fighters) {
+    fighter.hp = state.maxHp;
+    fighter.combo = 0;
+    fighter.ultimateCharge = 0;
+    fighter.ultimateReady = false;
+  }
+
+  state.round += 1;
+  state.roundStartedMs = Math.max(state.elapsedMs, atMs);
+  state.elapsedMs = state.roundStartedMs;
+  state.rageMultiplier = 1;
+  state.phase = 'combat';
 }
 
 /** Average WPM across the whole match, for the results screen. */

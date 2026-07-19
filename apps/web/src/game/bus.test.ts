@@ -61,6 +61,8 @@ describe('gameBus', () => {
       fighters: [],
       rageMultiplier: 1,
       elapsedMs: 0,
+      round: 1,
+      score: [0, 0],
     });
 
     expect(combat).not.toHaveBeenCalled();

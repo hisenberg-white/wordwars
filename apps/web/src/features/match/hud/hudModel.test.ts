@@ -121,6 +121,8 @@ describe('reconciliation', () => {
     phase: 'combat',
     rageMultiplier: 2,
     elapsedMs: 1000,
+    round: 1,
+    score: [0, 0],
     fighters: [
       {
         playerId: ME,
@@ -130,6 +132,7 @@ describe('reconciliation', () => {
         maxCombo: 9,
         ultimateCharge: 44,
         ultimateReady: false,
+        roundsWon: 0,
         wordIndex: 12,
       },
       {
@@ -140,6 +143,7 @@ describe('reconciliation', () => {
         maxCombo: 4,
         ultimateCharge: 10,
         ultimateReady: false,
+        roundsWon: 0,
         wordIndex: 8,
       },
     ],
@@ -189,6 +193,7 @@ describe('reconciliation', () => {
           maxCombo: 0,
           ultimateCharge: 0,
           ultimateReady: false,
+          roundsWon: 0,
           wordIndex: 0,
         },
       ],
@@ -215,5 +220,85 @@ describe('display helpers', () => {
 
     state = applyEvent(state, attack({ damage: MAX_HP * 0.1 }));
     expect(isCritical(of(state, THEM))).toBe(true);
+  });
+});
+
+describe('rounds', () => {
+  const players = ['a', 'b'] as unknown as readonly [PlayerId, PlayerId];
+
+  it('starts a best-of-1 with no score and no intermission', () => {
+    const state = createHudState(players, 4000);
+    expect(state.round).toBe(1);
+    expect(state.score).toEqual([0, 0]);
+    expect(state.intermission).toBe(false);
+  });
+
+  /**
+   * The score comes from the SERVER's event, not from tallying here. A client
+   * counting its own rounds is one dropped packet away from disagreeing about
+   * who is winning.
+   */
+  it('takes the score from the round-end event', () => {
+    const state = applyEvent(createHudState(players, 4000), {
+      type: 'round-end',
+      t: 1,
+      winner: players[0],
+      loser: players[1],
+      round: 1,
+      score: [1, 0],
+    });
+
+    expect(state.score).toEqual([1, 0]);
+    expect(state.round).toBe(1);
+    expect(state.intermission).toBe(true);
+    expect(state.fighters[1]!.hp).toBe(0);
+  });
+
+  it('leaves the intermission when the server says combat resumed', () => {
+    const paused = applyEvent(createHudState(players, 4000), {
+      type: 'round-end',
+      t: 1,
+      winner: players[0],
+      loser: players[1],
+      round: 1,
+      score: [1, 0],
+    });
+
+    const resumed = reconcile(paused, {
+      tick: 20,
+      phase: 'combat',
+      rageMultiplier: 1,
+      elapsedMs: 5000,
+      round: 2,
+      score: [1, 0],
+      fighters: [
+        {
+          playerId: players[0],
+          hp: 4000,
+          maxHp: 4000,
+          combo: 0,
+          maxCombo: 12,
+          ultimateCharge: 0,
+          ultimateReady: false,
+          roundsWon: 1,
+          wordIndex: 30,
+        },
+        {
+          playerId: players[1],
+          hp: 4000,
+          maxHp: 4000,
+          combo: 0,
+          maxCombo: 8,
+          ultimateCharge: 0,
+          ultimateReady: false,
+          roundsWon: 0,
+          wordIndex: 22,
+        },
+      ],
+    });
+
+    expect(resumed.intermission).toBe(false);
+    expect(resumed.round).toBe(2);
+    expect(resumed.fighters[1]!.hp).toBe(4000);
   });
 });

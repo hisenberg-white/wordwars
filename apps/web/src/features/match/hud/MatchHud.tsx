@@ -6,6 +6,7 @@ import { ComboCounter } from './ComboCounter';
 import { HpBar } from './HpBar';
 import { TypingBand } from './TypingBand';
 import { UltimateMeter } from './UltimateMeter';
+import { RoundBanner, type RoundUpdate } from './RoundBanner';
 import {
   applyEvent,
   createHudState,
@@ -18,6 +19,8 @@ import {
 interface MatchHudProps {
   readonly fighters: readonly MatchFighter[];
   readonly maxHp: number;
+  /** Best-of-N. A best-of-1 renders no round furniture at all. */
+  readonly roundCount: 1 | 3 | 5;
 }
 
 type BarUpdate = (fraction: number, critical: boolean) => void;
@@ -36,12 +39,13 @@ type UltimateUpdate = (charge: number, ready: boolean) => void;
  * progress bar, no match timer. Every one of those would turn the screen into
  * a typing test. Progress is the opponent's HP going down.
  */
-export function MatchHud({ fighters, maxHp }: MatchHudProps) {
+export function MatchHud({ fighters, maxHp, roundCount }: MatchHudProps) {
   const stateRef = useRef<HudState | null>(null);
 
   const bars = useRef(new Map<PlayerId, BarUpdate>());
   const combos = useRef(new Map<PlayerId, ComboUpdate>());
   const ultimates = useRef(new Map<PlayerId, UltimateUpdate>());
+  const rounds = useRef<RoundUpdate | null>(null);
 
   const left = fighters.find((f) => f.side === 'left');
   const right = fighters.find((f) => f.side === 'right');
@@ -76,6 +80,8 @@ export function MatchHud({ fighters, maxHp }: MatchHudProps) {
         combos.current.get(fighter.playerId)?.(fighter.combo, comboTier(fighter.combo));
         ultimates.current.get(fighter.playerId)?.(fighter.ultimateCharge, fighter.ultimateReady);
       }
+
+      rounds.current?.(state.round, state.score, state.intermission);
     }
 
     return () => {
@@ -96,6 +102,9 @@ export function MatchHud({ fighters, maxHp }: MatchHudProps) {
     (playerId: PlayerId) => (update: UltimateUpdate) => ultimates.current.set(playerId, update),
     [],
   );
+  const bindRounds = useCallback((update: RoundUpdate) => {
+    rounds.current = update;
+  }, []);
 
   if (!left || !right) return null;
 
@@ -108,7 +117,10 @@ export function MatchHud({ fighters, maxHp }: MatchHudProps) {
           <UltimateMeter side="p1" bind={bindUltimate(left.playerId)} />
         </div>
 
-        <span className="mt-2 font-display text-2xl font-700 italic text-ink-faint">VS</span>
+        <div className="mt-2 flex flex-col items-center gap-2">
+          <span className="font-display text-2xl font-700 italic text-ink-faint">VS</span>
+          <RoundBanner roundCount={roundCount} bind={bindRounds} />
+        </div>
 
         <div className="flex w-[38%] flex-col items-end gap-2">
           <HpBar side="p2" nickname={right.nickname} bind={bindBar(right.playerId)} />
