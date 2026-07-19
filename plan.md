@@ -16,8 +16,18 @@ picked up cold and executed without re-deriving decisions.
 **Current phase: Phase 1 — Foundation**
 
 ### Phase 1 — Foundation
-- [ ] 1.1 Monorepo skeleton (pnpm workspaces + Turborepo, shared tsconfig/eslint/prettier)
-- [ ] 1.2 `packages/shared` — socket event contract + core types
+- [x] 1.1 Monorepo skeleton (pnpm workspaces + Turborepo, shared tsconfig/eslint/prettier)
+      → root `package.json` (ESM), `pnpm-workspace.yaml`, `turbo.json`,
+        `packages/config` (eslint flat config + 3 tsconfigs), prettier, git init.
+        `exactOptionalPropertyTypes` is ON everywhere except React (noise > signal there).
+- [x] 1.2 `packages/shared` — socket event contract + core types
+      → branded IDs; `domain/{player,content,combat,match,room}`;
+        `net/{payloads,errors,contract}`. Zod schemas are the source of truth for
+        every inbound payload — TS types are `z.infer`'d so they cannot drift.
+        Consumed as TS source (no build step). Typecheck + lint clean.
+      → NOTE: wire compaction of `CombatEvent` (plan §7.2 tuple encoding) is
+        deferred to 3.3, where it can be measured instead of guessed. It slots in
+        behind a codec at one boundary; no call sites change.
 - [ ] 1.3 Server — Express + Socket.io + Zod env config + Pino logging + health check
 - [ ] 1.4 Web — Vite + React + Tailwind shell with dark game theme + design tokens
 - [ ] 1.5 Socket round-trip proven end to end (client connects, echoes, shows status)

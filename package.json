@@ -2,6 +2,7 @@
   "name": "wordwars",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "description": "A competitive multiplayer fighting game where typing is the controller.",
   "packageManager": "pnpm@11.14.0",
   "engines": {
