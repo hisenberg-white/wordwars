@@ -493,7 +493,42 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
       → **NOT VISUALLY VERIFIED — no browser tooling.** Types, geometry, bus wiring
       and bundle splitting are all tested; whether it actually LOOKS good on screen
       is unknown. This is the largest unverified surface in the project so far.
-- [ ] 3.5 FX — attacks, hits, crits, combos, ultimate cinematic, KO
+- [x] 3.5 FX — attacks, hits, crits, combos, ultimate cinematic, KO
+      → **Split so the design decisions are testable.** `fx/effects.ts` decides what
+      a hit LOOKS like and returns pure `EffectSpec[]`; `FxLayer` only draws them.
+      `fx/choreography.ts` decides who animates and when. Both are pure, so claims
+      like "a crit is unmistakably bigger", "a ranged attack travels before it
+      lands", "an Ultimate dwarfs a crit" fail a test if broken — instead of being
+      discovered by eye three phases later. 37 tests across the two.
+      → **FX size on `weight`, not damage.** The engine keeps them separate (§3.1)
+      precisely so a long word always LANDS heavily even when its damage number is
+      small early in a match. A test pins this: high weight + low damage must out-FX
+      low weight + high damage.
+      → A crit gets its OWN shockwave and its own colour, not merely a bigger
+      version of the normal burst — distinguishable at a glance rather than on
+      comparison.
+      → Ranged attacks (fireball/arrow/laser/magic) spawn a projectile and DELAY the
+      impact until it arrives; melee lands immediately. Tested per attack kind.
+      → Ultimate is staged in three beats — charge aura at the caster, beam across,
+      then a shockwave — so it reads as an event rather than a big punch. Test
+      asserts the aura precedes the impact and total lifetime exceeds 800ms.
+      → A miss is small, drab, and anchored to the player who ERRED. It must be
+      legible without competing with a hit for attention; a test asserts it is
+      smaller than even the lightest hit and never uses the fighter's colour.
+      → Combo flourishes start at tier 2. Flourishing on every early combo would
+      make the later ones mean nothing.
+      → combo-tier / ultimate-ready / rage produce NO animation cue — they change
+      how a fighter glows, not what they are doing. Interrupting a swing to play an
+      idle pose because a tier ticked over would make the fight stutter.
+      → Reactions are DELAYED (70ms melee, 420ms ultimate). A target that flinches
+      the instant the attacker starts moving reads as two unrelated animations; the
+      offset is what makes it read as cause and effect.
+      → All FX objects are pre-allocated pools with round-robin cursors — zero
+      allocation in the hot path (§6.4). A GC pause during a long combo is a dropped
+      frame at exactly the moment the player is most invested.
+      → 172 web tests.
+      → STILL NOT VISUALLY VERIFIED. The design layer is now well covered by tests;
+      the drawing layer is not, and cannot be without a browser.
 - [ ] 3.6 HUD — HP bars, combo counter, ultimate meter, text band
 - [ ] 3.7 Game feel — hit stop, screen shake, damage numbers
 - [ ] 3.8 Audio + SFX
