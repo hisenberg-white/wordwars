@@ -105,6 +105,9 @@ importers:
       '@fontsource/chakra-petch':
         specifier: ^5.1.1
         version: 5.2.7
+      '@wordwars/engine':
+        specifier: workspace:*
+        version: link:../../packages/engine
       '@wordwars/shared':
         specifier: workspace:*
         version: link:../../packages/shared

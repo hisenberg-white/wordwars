@@ -336,46 +336,73 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
       quietly stops being true, and a desync is far harder to notice than a
       failed lint.
       → **90 tests, 100% coverage — statements, branches, functions, lines.**
+      → **TWO PLAN NUMBERS WERE WRONG — both caught by simulating before coding.**
+      → WRONG #1: the tempo bonus was INERT. §5.2's `clamp(1.6 - dt/400, ...)` put
+      the whole useful curve between 100-300ms per word, i.e. 200-600 WPM. Every
+      human from 40 to 200 WPM sat permanently on the 0.85 floor, so "faster hits
+      harder" never fired for anyone and was just a flat 15% penalty on the entire
+      player base. Divisor corrected to 1600, which spreads the curve across
+      50-150 WPM where players actually live. A test now asserts the curve
+      discriminates across that range so it cannot silently die again.
+      → WRONG #2: 1000 HP made the top combo tier UNREACHABLE. Simulation showed
+      ~19s matches over ~23 words, so combo 35 (the 2.40x tier) could never be
+      reached and the plan's own "60-90s" target was impossible. Raised to 4000 HP:
+      ~56s even matches, ~70 words, peak combo ~39.
+      → Also retuned: Ultimate charge is now `2.5 + combo*0.18` (was
+      `4 + combo*0.35`, which simulated to ~6.5 Ultimates per match — a move meant
+      to freeze time and make spectators gasp was neither rare nor cinematic). Now
+      ~2 per player. Ultimate damage `260 + 6*combo`, roughly 4-5x a normal hit and
+      ~10% of a health bar.
+      → **RNG is position-addressed, not sequential** — `hash(seed, slot, wordIndex)`.
+      The single most important architectural call in the engine. A normal seeded
+      PRNG yields its Nth value only after N-1 draws, but the client predicts ONLY
+      its own words while the server interleaves both players — they would consume
+      the stream in different orders and disagree about crits. Hashing by position
+      means any value computes in isolation, in any order, on any machine. Tested
+      explicitly: a fighter's rolls are identical whether or not the opponent acts.
+      → Determinism test (plan §10): same seed + same inputs produce byte-identical
+      events.
+      → Word index must arrive in order — the anti-cheat floor. Without it a client
+      replays word 7 forever and lands unlimited hits.
+      → A word is scored at the combo held BEFORE the strike, not after.
+      → Ultimates ignore crits: a cinematic finisher that sometimes did 1.8x more
+      would make the game's biggest moment feel arbitrary.
+      → `impactWeight` is separate from damage — a chip hit and a heavy hit can do
+      similar numbers at different combo tiers but must not FEEL the same.
+      → `constants.ts` is the tuning file for the 3.11 gate; every value carries its
+      rationale, because a bare number nobody understands is one nobody dares change.
 
-      **TWO PLAN NUMBERS WERE WRONG. Both found by simulating before coding:**
-
-          1. **Tempo bonus was inert.** §5.2's `clamp(1.6 - dt/400, …)` put the whole
-             useful curve between 100–300ms/word = 200–600 WPM. EVERY human from 40 to
-             200 WPM sat on the 0.85 floor — the "faster hits harder" mechanic never
-             fired for anyone and was just a flat 15% penalty. Divisor corrected to
-             **1600**, which spreads the curve across 50–150 WPM where players live.
-             A test now asserts the curve actually discriminates across that range.
-
-          2. **HP made the top combo tier unreachable.** At 1000 HP, matches ran ~19s
-             over ~23 words — so combo 35 (the 2.40× tier) could never be reached, and
-             the plan's own "60–90s" target was impossible. Raised to **4000 HP**:
-             ~56s even matches, ~70 words, peak combo ~39.
-
-          Also retuned: Ultimate charge (`2.5 + combo*0.18`, was `4 + combo*0.35`) —
-          the original gave ~6.5 Ultimates per match, so a move meant to freeze time
-          and make spectators gasp was neither rare nor cinematic. Now ~2 per player.
-          Ultimate damage scaled to `260 + 6*combo` (~4–5× a normal hit, ~10% of a bar).
-
-          → **RNG is position-addressed, not sequential** — `hash(seed, slot, wordIndex)`.
-            This is the single most important architectural call in the engine. A normal
-            seeded PRNG yields its Nth value only after N-1 draws, but the client
-            predicts ONLY its own words while the server interleaves both players — they
-            would consume the stream in different orders and disagree about crits.
-            Hashing by position means any value computes in isolation, in any order, on
-            any machine. Tested explicitly: a fighter's rolls are identical whether or
-            not the opponent is acting.
-          → Determinism test (plan §10): same seed + same inputs → byte-identical events.
-          → Word index must arrive in order — the anti-cheat floor. Without it a client
-            replays word 7 forever and lands unlimited hits.
-          → A word is scored at the combo held BEFORE the strike, not after.
-          → Ultimates ignore crits: a cinematic finisher that sometimes did 1.8× more
-            would make the game's biggest moment feel arbitrary.
-          → `impactWeight` is separate from damage — a chip hit and a heavy hit can do
-            similar numbers at different combo tiers but must not FEEL the same.
-          → `constants.ts` is the tuning file for the 3.11 gate; every value carries its
-            rationale, because a bare number nobody understands is one nobody dares change.
-
-- [ ] 3.2 InputEngine (§4)
+- [x] 3.2 InputEngine (§4)
+      → `apps/web/src/input/InputEngine.ts` — the gamepad, not a text field.
+      35 unit tests driven through REAL `KeyboardEvent` dispatch on a real
+      EventTarget, so modifier handling and `preventDefault` are actually exercised
+      rather than assumed.
+      → No `<input>`, no `<textarea>`, no `contentEditable`: a real form field
+      brings autocorrect, autofill, spellcheck and IME composition, every one of
+      which mangles words or inserts characters the player never typed.
+      → The keystroke timestamp is the FIRST statement in the handler, before any
+      branching, so our own dispatch cost never pollutes the timing data the server
+      judges tempo and cheating by.
+      → Timings are sent as inter-key DELTAS, never absolute times — the server has
+      no use for the player's wall clock and we have no business collecting it.
+      Capped at 64 to match the payload schema.
+      → `dirty` is STICKY: backspace repairs the text but not the record. Free
+      repair keeps the flow, the combo pays the cost (§4.2).
+      → **Empty space commits are ignored.** Without that guard, holding the
+      spacebar marches through the whole text at the key-repeat rate, burning every
+      word as a miss and losing the match without a single character typed.
+      → `preventDefault` on space (page scrolls under the player) and backspace
+      (browser navigates back mid-match). Ctrl/Meta/Alt combos pass through
+      untouched — trapping Ctrl+R or Cmd+Tab would strand the player in the page.
+      → Sentence boundaries are invisible: words live in one flat list with global
+      indices, so there is no pause and combat never stops.
+      → **`typingToCombat.test.ts` proves the premise end to end** — 9 integration
+      tests wiring the real InputEngine to the real combat engine with synthetic
+      keystrokes: a typed word damages the opponent, combos build, a typo breaks the
+      combo without self-damage, a repaired word still costs it, faster and longer
+      words hit harder, an Ultimate charges and fires, and a knockout is reached by
+      typing alone. This is the first proof that typing IS the controller.
+      → 52 web tests total.
 - [ ] 3.3 Server MatchEngine — tick loop, validation, sentence streaming, batching
 - [ ] 3.4 Phaser arena scene + procedural fighters
 - [ ] 3.5 FX — attacks, hits, crits, combos, ultimate cinematic, KO
