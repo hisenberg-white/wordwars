@@ -9,6 +9,7 @@ import type {
 } from '@wordwars/shared';
 import { connection } from './ConnectionManager';
 import { gameBus } from '@/game/bus';
+import { filterPredicted, filterServer } from './eventReconciler';
 import { InputEngine, type WordCommit } from '@/input/InputEngine';
 
 export type MatchStatus = 'idle' | 'live' | 'ended';
@@ -91,7 +92,12 @@ class MatchManager {
     socket.on('match:sentence', (sentence) => this.input.pushSentence(sentence.words));
 
     socket.on('match:events', ({ events }) => {
-      for (const listener of this.eventListeners) listener(events, false);
+      // Drop the server's copy of anything we already predicted, or the
+      // damage lands twice. See eventReconciler.
+      const rendered = filterServer(events, this.selfId);
+      if (rendered.length > 0) {
+        for (const listener of this.eventListeners) listener(rendered, false);
+      }
     });
 
     socket.on('match:state', (snapshot) => {
@@ -124,8 +130,9 @@ class MatchManager {
         atMs: commit.atMs,
       });
 
-      if (delta.events.length > 0) {
-        for (const listener of this.eventListeners) listener(delta.events, true);
+      const predicted = filterPredicted(delta.events);
+      if (predicted.length > 0) {
+        for (const listener of this.eventListeners) listener(predicted, true);
       }
     }
 

@@ -7,6 +7,9 @@ import { ProceduralFighter, type FighterView } from '../entities/Fighter';
 import { choreographyFor } from '../fx/choreography';
 import { effectsFor } from '../fx/effects';
 import { FxLayer } from '../fx/FxLayer';
+import { DamageNumbers } from '../feel/DamageNumbers';
+import { HitStop } from '../feel/HitStop';
+import { combineFeel, feelFor, type ImpactFeel } from '../feel/impact';
 
 /** Matches the CSS rivalry palette exactly — P1 crimson, P2 cyan. */
 const P1_COLOR = 0xff2f57;
@@ -32,6 +35,10 @@ export class ArenaScene extends Phaser.Scene {
 
   private backdrop: Backdrop | null = null;
   private fx: FxLayer | null = null;
+  private hitStop: HitStop | null = null;
+  private damageNumbers: DamageNumbers | null = null;
+  private maxHp = 4000;
+  private reducedMotion = false;
   private readonly fighters = new Map<PlayerId, FighterView>();
   private readonly positions = new Map<PlayerId, { x: number; y: number }>();
   private readonly colors = new Map<PlayerId, number>();
@@ -44,10 +51,19 @@ export class ArenaScene extends Phaser.Scene {
 
   create(): void {
     this.fx = new FxLayer(this);
+    this.hitStop = new HitStop(this);
+    this.damageNumbers = new DamageNumbers(this);
+
+    // Honoured from the start rather than retrofitted with the settings panel
+    // in 5.5: shake is the one effect that can make a player physically unwell.
+    this.reducedMotion =
+      typeof window !== 'undefined' &&
+      window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
 
     this.unsubscribes.push(
       gameBus.on('match:begin', ({ config, fighters }) => {
         this.buildStage(config.arenaId);
+        this.maxHp = config.maxHp;
 
         for (const fighter of fighters) {
           const isLeft = fighter.side === 'left';
@@ -72,7 +88,31 @@ export class ArenaScene extends Phaser.Scene {
       }),
 
       gameBus.on('combat:events', ({ events }) => {
-        for (const event of events) this.perform(event);
+        const feels: ImpactFeel[] = [];
+
+        for (const event of events) {
+          this.perform(event);
+
+          const feel = feelFor(event, {
+            reducedMotion: this.reducedMotion,
+            maxHp: this.maxHp,
+          });
+          feels.push(feel);
+
+          const anchors = this.anchorsFor(event);
+          if (feel.damageNumber && anchors) {
+            this.damageNumbers?.show(anchors.target, feel.damageNumber);
+          }
+        }
+
+        // Combined, not applied per event: two hits in one 33ms flush must not
+        // freeze the game for the sum of both.
+        const combined = combineFeel(feels);
+        this.hitStop?.freeze(combined.hitStopMs);
+
+        if (combined.shake) {
+          this.cameras.main.shake(combined.shake.durationMs, combined.shake.intensity);
+        }
       }),
 
       gameBus.on('match:over', (result) => {
@@ -143,6 +183,10 @@ export class ArenaScene extends Phaser.Scene {
 
     this.fx?.destroy();
     this.fx = null;
+    this.hitStop?.destroy();
+    this.hitStop = null;
+    this.damageNumbers?.destroy();
+    this.damageNumbers = null;
     this.backdrop?.destroy();
     this.backdrop = null;
   }

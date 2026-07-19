@@ -565,7 +565,48 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
       match timer anywhere in the HUD. Progress is the opponent's HP going down.
       Band sits low and thin so the fighters own the frame.
       → 201 web tests.
-- [ ] 3.7 Game feel — hit stop, screen shake, damage numbers
+- [x] 3.7 Game feel — hit stop, screen shake, damage numbers
+      → **REAL BUG FOUND AND FIXED: prediction was double-applying damage.** The
+      client resolves its own word locally for instant feedback, then the server
+      sends its authoritative copy of the SAME attack — both flowed through
+      `combat:events`, so the HP bar double-dropped and snapped back on the next
+      snapshot, and the player would have eaten two hit-stops and two damage
+      numbers for one word. Wiring prediction to a HUD in 3.6 is what exposed it.
+      → Fixed with `net/eventReconciler.ts`, pure and tested (15 tests). The rule:
+      OUR actions render from the prediction (server copy dropped as a duplicate),
+      the OPPONENT's render from the server (we never predict them), and
+      match-ending events ALWAYS come from the server whoever caused them — a
+      predicted KO would end the fight on screen for a match still being played if
+      local and server disagreed by a single point of damage. A test asserts each
+      action is rendered exactly once across both halves.
+      → `feel/impact.ts` is pure and tested (18 tests). Hit-stop escalates
+      jab < heavy < crit < ultimate < knockout — that hierarchy IS the point; if a
+      crit did not out-punch a jab, impacts would read as noise rather than
+      escalation.
+      → **A miss gets NO hit-stop.** Freezing on a mistake punishes the player
+      twice — once by breaking the combo, again by interrupting the flow they are
+      rebuilding. The cost of a miss is the combo and only the combo (§5.3).
+      → `combineFeel` takes the MAXIMUM across a batch, never the sum. Two hits in
+      one 33ms flush freezing for the total is how a game becomes a slideshow at
+      exactly the moment it should feel fastest.
+      → **Shake is capped hard (0.012).** Feel must never cost legibility in a game
+      where reading IS the input — an uncapped shake makes a late-match Ultimate
+      unreadable while the player is still expected to type through it.
+      → **CALIBRATION BUG CAUGHT BY A TEST:** shake originally referenced 12% of a
+      health bar, so a typical early hit (~30 of 4000 damage) produced NO shake at
+      all — the game felt flat for the first third of every match, precisely when a
+      new player decides whether they like it. Reference lowered to 4%; regression
+      test pins it.
+      → `prefers-reduced-motion` suppresses shake from day one rather than waiting
+      for the settings panel in 5.5 — shake is the one effect that can make a
+      player physically unwell. Hit-stop still applies, since a freeze is not motion.
+      → `HitStop` zeroes tween/timer timescales rather than pausing the scene, so
+      the frame keeps drawing — a still frame IS the effect. Recovery uses
+      `window.setTimeout` deliberately: scheduling on the clock we just stopped
+      would freeze the game permanently.
+      → Damage numbers pop, arc and fade from a pool. A number travelling in a
+      straight line reads as UI; one thrown on an arc reads as debris from the hit.
+      → 234 web tests.
 - [ ] 3.8 Audio + SFX
 - [ ] 3.9 Victory/defeat screen + rematch
 - [ ] 3.10 Reconnect + forfeit
