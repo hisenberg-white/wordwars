@@ -13,7 +13,7 @@ picked up cold and executed without re-deriving decisions.
 > **Any new session: start here.** Work the first unchecked box in the current
 > phase. Tick boxes as they land. Do not rebuild anything already ticked.
 
-**Current phase: Phase 5 — Production Polish.** Phase 4 COMPLETE (4.1–4.5).
+**Current phase: Phase 5 — Production Polish.** 5.5 and 5.7 complete.
 
 > Phase 3 is done bar the SUBJECTIVE half of the 3.11 gate: the balance numbers
 > are proven by simulation, but **nobody has actually played this yet.** That
@@ -949,7 +949,42 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
 - [ ] 5.2 Full arena set (weather, lighting, reactive events)
 - [ ] 5.3 Admin panel
 - [ ] 5.4 Ads (guarded against combat phase)
-- [ ] 5.5 Settings (volumes, quality, accessibility)
+- [x] 5.5 Settings (volumes, quality, accessibility)
+      → Taken ahead of the other Phase 5 items because its ABSENCE was the
+      harm: the game has screen shake, hit-stop, flashing impacts and
+      synthesised audio, and no way to turn any of it down.
+      → **`prefers-reduced-motion` is the DEFAULT, not an override.** Someone
+      who asked their OS to reduce motion has already answered the question;
+      making them answer it again — in a menu they must find, after the first
+      shake has already hit them — is not a real choice. So `motion` is
+      tri-state: `auto` follows the system, `full`/`reduced` are explicit
+      overrides. An inferred preference never outranks a stated one.
+      → Stored as `auto` and resolved on READ, so changing the OS setting or
+      moving to another machine gives the new answer rather than a snapshot.
+      → **THE accessibility guarantee, pinned by test:** reduced motion removes
+      camera shake — the one effect that can make somebody physically unwell —
+      but KEEPS hit-stop and damage numbers. A player who needs it gets a
+      calmer fight, not a less legible one. Hiding hits would make the setting
+      a penalty for needing it.
+      → BUG FIXED: `ArenaScene` sampled `matchMedia` once at scene creation and
+      never again, so turning reduced motion on mid-session did nothing until
+      reload — the setting appeared broken. Now read per batch, and the manager
+      subscribes to system changes.
+      → Quality scales particle COUNT only, never how hard a hit reads: a slower
+      machine renders a lighter version of the same fight, not an easier one.
+      Applied once at the `effectsFor` boundary rather than at fifteen `spec()`
+      call sites, so a new effect cannot silently ignore it. Never below one
+      particle — an invisible effect reads as the input not registering.
+      → Mute is folded INTO master gain rather than living beside it: the audio
+      engine's ducking ramps back toward `master`, so a separate mute flag
+      would be undone mid-duck and the game would start talking again by itself.
+      → Everything applies live. A volume slider you cannot hear while dragging
+      is not tunable; a motion toggle that waits for the next match has already
+      failed the person who needed it.
+      → Settings are validated field-by-field on load: this data outlives
+      deploys, and a settings screen that throws on a stale blob would lock a
+      player out of the screen they need to fix it.
+      → 289 web tests (+28). Production build clean.
 - [ ] 5.6 Spectator mode
 - [x] 5.7 Best-of-3/5 rounds
       → **Fixed a setting that was lying.** `roundCount` has been in the lobby

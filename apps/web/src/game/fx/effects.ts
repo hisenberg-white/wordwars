@@ -38,6 +38,15 @@ export interface EffectContext {
   /** Colour of the acting fighter, so effects read as belonging to them. */
   readonly actorColor: number;
   readonly arenaAccent: number;
+  /**
+   * Particle multiplier from the quality setting. 1 is full.
+   *
+   * Scales how MANY particles spawn, never how hard a hit reads: a low-end
+   * machine should render a lighter version of the same fight, not a different
+   * one. Every effect funnels through `spec()`, so this is applied in exactly
+   * one place and cannot drift between effect kinds.
+   */
+  readonly particleScale?: number;
 }
 
 const CRIT_COLOR = 0xff8a1f;
@@ -56,6 +65,25 @@ const TRAVEL_MS = 160;
  * what lets the renderer stay a dumb consumer.
  */
 export function effectsFor(event: CombatEvent, ctx: EffectContext): EffectSpec[] {
+  const effects = describeEffects(event, ctx);
+  const scale = ctx.particleScale ?? 1;
+  if (scale === 1) return effects;
+
+  /*
+   * Quality scales particle COUNT and nothing else.
+   *
+   * Applied here rather than at each of the fifteen `spec()` call sites, so a
+   * new effect cannot be added that quietly ignores the setting. Never below
+   * one: an effect that spawns zero particles reads as the hit not registering
+   * at all, which is a worse experience than a heavy one.
+   */
+  return effects.map((effect) => ({
+    ...effect,
+    count: Math.max(1, Math.round(effect.count * scale)),
+  }));
+}
+
+function describeEffects(event: CombatEvent, ctx: EffectContext): EffectSpec[] {
   switch (event.type) {
     case 'attack':
       return attackEffects(event, ctx);

@@ -31,14 +31,4 @@ export const PENDING_ROUTES: ReadonlyArray<{
       />
     ),
   },
-  {
-    path: '/settings',
-    element: (
-      <ComingSoonScreen
-        step="5.5"
-        title="Settings"
-        description="Volume, typing sounds, graphics quality, reduced motion and accessibility options."
-      />
-    ),
-  },
 ];

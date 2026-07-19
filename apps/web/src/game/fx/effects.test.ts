@@ -219,3 +219,54 @@ describe('effectLifetime', () => {
     expect(effectLifetime([])).toBe(0);
   });
 });
+
+describe('quality scaling', () => {
+  const attack = (): CombatEvent => ({
+    type: 'attack',
+    t: 1,
+    actor: 'a' as PlayerId,
+    target: 'b' as PlayerId,
+    damage: 120,
+    kind: 'punch',
+    combo: 5,
+    crit: false,
+    weight: 1,
+  });
+
+  const base = { actorColor: 0xffffff, arenaAccent: 0x000000 };
+
+  it('spawns fewer particles at lower quality', () => {
+    const full = effectsFor(attack(), base);
+    const light = effectsFor(attack(), { ...base, particleScale: 0.35 });
+
+    const total = (specs: ReturnType<typeof effectsFor>) =>
+      specs.reduce((sum, s) => sum + s.count, 0);
+
+    expect(total(light)).toBeLessThan(total(full));
+  });
+
+  /** An effect that spawns nothing reads as the hit not registering at all. */
+  it('never scales an effect down to zero particles', () => {
+    for (const spec of effectsFor(attack(), { ...base, particleScale: 0.01 })) {
+      expect(spec.count).toBeGreaterThanOrEqual(1);
+    }
+  });
+
+  /**
+   * Quality changes how MANY particles appear, never how hard the hit reads.
+   * If `low` altered which hits felt big, quality would be a gameplay setting
+   * wearing a performance setting's clothes.
+   */
+  it('leaves the weight of a hit alone', () => {
+    const full = effectsFor(attack(), base);
+    const light = effectsFor(attack(), { ...base, particleScale: 0.35 });
+
+    expect(light.map((s) => s.kind)).toEqual(full.map((s) => s.kind));
+    expect(light.map((s) => s.scale)).toEqual(full.map((s) => s.scale));
+    expect(light.map((s) => s.durationMs)).toEqual(full.map((s) => s.durationMs));
+  });
+
+  it('is a no-op at full quality', () => {
+    expect(effectsFor(attack(), { ...base, particleScale: 1 })).toEqual(effectsFor(attack(), base));
+  });
+});

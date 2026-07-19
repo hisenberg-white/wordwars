@@ -1,6 +1,9 @@
 import { useEffect } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { bindAudio, installAudioUnlock } from '@/audio/bindAudio';
+import { audio } from '@/audio/AudioEngine';
+import { settingsManager } from '@/settings/SettingsManager';
+import { audioSettingsOf } from '@/settings/settings';
 import { authManager } from '@/net/AuthManager';
 import { Backdrop } from '@/ui/Backdrop';
 import { useConnectionLifecycle } from '@/net/useConnection';
@@ -13,6 +16,7 @@ import { ProfileScreen } from '@/features/profile/ProfileScreen';
 import { LeaderboardScreen } from '@/features/leaderboard/LeaderboardScreen';
 import { FriendsScreen } from '@/features/friends/FriendsScreen';
 import { ChallengeToast } from '@/features/friends/ChallengeToast';
+import { SettingsScreen } from '@/features/settings/SettingsScreen';
 import { PENDING_ROUTES } from './routes';
 
 export function App() {
@@ -29,9 +33,21 @@ export function App() {
     const offAudio = bindAudio();
     const offUnlock = installAudioUnlock();
 
+    /*
+     * Volume changes apply live.
+     *
+     * A settings screen where the slider only takes effect on the next match
+     * is a settings screen you cannot actually tune by ear — the whole point of
+     * dragging it is to hear the result.
+     */
+    const applyAudio = () => audio.update(audioSettingsOf(settingsManager.current));
+    applyAudio();
+    const offSettings = settingsManager.subscribe(applyAudio);
+
     return () => {
       offAudio();
       offUnlock();
+      offSettings();
     };
   }, []);
 
@@ -47,6 +63,7 @@ export function App() {
           <Route path="/profile" element={<ProfileScreen />} />
           <Route path="/leaderboard" element={<LeaderboardScreen />} />
           <Route path="/friends" element={<FriendsScreen />} />
+          <Route path="/settings" element={<SettingsScreen />} />
           {PENDING_ROUTES.map(({ path, element }) => (
             <Route key={path} path={path} element={element} />
           ))}
