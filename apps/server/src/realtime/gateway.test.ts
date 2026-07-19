@@ -134,6 +134,97 @@ describe('gateway', () => {
     await expect(rateLimited).resolves.toBe('RATE_LIMITED');
   });
 
+  describe('guest identity', () => {
+    it('issues a generated identity to a new guest', async () => {
+      const client = await connectClient();
+      const res = await client.timeout(2_000).emitWithAck('guest:init', {});
+
+      expect(res.ok).toBe(true);
+      if (!res.ok) throw new Error('unreachable');
+
+      expect(res.data.identity.isGuest).toBe(true);
+      expect(res.data.identity.nickname).toMatch(/^[A-Za-z0-9_]+$/);
+      expect(res.data.token.token).toContain('.');
+      expect(res.data.token.expiresAt).toBeGreaterThan(Date.now());
+    });
+
+    it('accepts a chosen nickname', async () => {
+      const client = await connectClient();
+      const res = await client.timeout(2_000).emitWithAck('guest:init', { nickname: 'SilentFox' });
+
+      expect(res.ok).toBe(true);
+      if (!res.ok) throw new Error('unreachable');
+      expect(res.data.identity.nickname).toBe('SilentFox');
+    });
+
+    /**
+     * The behaviour the token exists for: a refresh, or a reconnect to a
+     * different server process, must not turn the player into someone else.
+     */
+    it('restores the same identity from a stored token on a fresh socket', async () => {
+      const first = await connectClient();
+      const initial = await first.timeout(2_000).emitWithAck('guest:init', {});
+      if (!initial.ok) throw new Error('unreachable');
+
+      first.disconnect();
+
+      const second = await connectClient();
+      const restored = await second
+        .timeout(2_000)
+        .emitWithAck('guest:init', { token: initial.data.token.token });
+
+      expect(restored.ok).toBe(true);
+      if (!restored.ok) throw new Error('unreachable');
+
+      expect(restored.data.identity.playerId).toBe(initial.data.identity.playerId);
+      expect(restored.data.identity.nickname).toBe(initial.data.identity.nickname);
+    });
+
+    it('keeps the player id when renaming', async () => {
+      const client = await connectClient();
+      const initial = await client.timeout(2_000).emitWithAck('guest:init', {});
+      if (!initial.ok) throw new Error('unreachable');
+
+      const renamed = await client.timeout(2_000).emitWithAck('guest:init', {
+        token: initial.data.token.token,
+        nickname: 'CrimsonPanda',
+      });
+
+      expect(renamed.ok).toBe(true);
+      if (!renamed.ok) throw new Error('unreachable');
+
+      expect(renamed.data.identity.nickname).toBe('CrimsonPanda');
+      expect(renamed.data.identity.playerId).toBe(initial.data.identity.playerId);
+    });
+
+    it('rejects a reserved nickname', async () => {
+      const client = await connectClient();
+      const res = await client.timeout(2_000).emitWithAck('guest:init', { nickname: 'Admin' });
+
+      expect(res.ok).toBe(false);
+      if (res.ok) throw new Error('unreachable');
+      expect(res.error.code).toBe('INVALID_PAYLOAD');
+    });
+
+    /** A junk token should read as a normal first visit, not an error state. */
+    it('silently issues a fresh identity when the token is invalid', async () => {
+      const client = await connectClient();
+      const res = await client.timeout(2_000).emitWithAck('guest:init', { token: 'garbage.token' });
+
+      expect(res.ok).toBe(true);
+      if (!res.ok) throw new Error('unreachable');
+      expect(res.data.identity.nickname).toBeTruthy();
+    });
+
+    it('updates the identity stored on the socket', async () => {
+      const client = await connectClient();
+      await client.timeout(2_000).emitWithAck('guest:init', { nickname: 'IronViper' });
+
+      const sockets = await gateway.fetchSockets();
+      expect(sockets[0]?.data.identity.nickname).toBe('IronViper');
+    });
+  });
+
   it('drops the socket record on disconnect', async () => {
     const client = await connectClient();
     expect(await gateway.fetchSockets()).toHaveLength(1);

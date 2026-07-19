@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { connection, type ConnectionSnapshot } from './ConnectionManager';
+import { identity, type IdentitySnapshot } from './IdentityManager';
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
 
@@ -23,6 +24,14 @@ export function useConnection(): ConnectionSnapshot {
  */
 export function useConnectionLifecycle(): void {
   useEffect(() => {
-    connection.connect(SERVER_URL);
+    const socket = connection.connect(SERVER_URL);
+    identity.attach(socket);
   }, []);
 }
+
+/** The player's guest identity, or null until the server has issued one. */
+export function useIdentity(): IdentitySnapshot {
+  return useSyncExternalStore(identity.subscribe, identity.getSnapshot, identity.getSnapshot);
+}
+
+export const renameSelf = (nickname: string): void => identity.rename(nickname);

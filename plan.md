@@ -146,7 +146,45 @@ compile-verified and test-verified but never actually looked at.
       across the repo, all green; full CI sequence passes; all routes serve 200.
       → STILL NOT VISUALLY VERIFIED — no browser tooling. Structure and behaviour are
       tested; appearance is not.
-- [ ] 2.2 Guest identity (generated names, editable, signed token)
+- [x] 2.2 Guest identity (generated names, editable, signed token)
+      → **Tokens are stateless HMAC-signed, not server-side sessions.** A guest must
+      survive a refresh, a server restart, AND being routed to a different process.
+      A session store would need sticky routing or a Redis lookup per connect —
+      and Redis is optional until Phase 4. One HMAC buys all three properties.
+      Payload = {playerId, nickname, expiresAt}; signature verified with
+      `timingSafeEqual`. Every failure mode returns the same `null` (telling an
+      attacker _which_ half of their guess was wrong gains them information and
+      gains us nothing — client recovery is identical either way).
+      → It IS a bearer credential: whoever holds it is that guest. Correct trade for
+      a throwaway identity with no purchases attached, and the reason 4.1 gets real
+      auth rather than an extension of this.
+      → `guest:init` does establish / restore / rename in ONE event — they're the same
+      operation with different inputs, and collapsing them removes a race where a
+      client renames before its identity exists. Always reissues the token, since
+      the nickname is inside the signed payload.
+      → An invalid or expired token silently issues a fresh identity rather than
+      erroring. Coming back after a fortnight should feel like a normal visit.
+      → **Guest names are deliberately NOT unique.** Enforcing it would put a shared
+      registry on the matchmaking hot path and produce `RapidWolf_4817` fallbacks,
+      to solve a problem that barely exists — two guests only meet inside one match.
+      Registered usernames stay unique; that constraint lives on the User table.
+      → `validateNickname` lives in shared, so client-side instant feedback and
+      server-side enforcement can never disagree. RESERVED_NICKNAMES blocks
+      impersonation only (admin/mod/system) — normalised for case AND separators,
+      so `A_d_m_i_n` is caught. Not a profanity filter; that's a moderation
+      problem with a moderation solution (Report table already exists).
+      → Names generated with `crypto.randomInt`, not `Math.random()` — a fleet
+      restarting together would otherwise hand out correlated names.
+      → Client: `IdentityManager` (same external-store pattern as ConnectionManager),
+      localStorage persistence, re-announces on EVERY connect (a reconnect after a
+      server restart lands on a process that never heard of this player). Storage
+      failures are non-fatal — private browsing still gets you a fight.
+      → `IdentityChip` in nav is click-to-edit; the dialog waits for server
+      confirmation before closing, so a rejected name shows the reason instead of
+      silently reverting.
+      → 52 tests total. Live end-to-end verified against the real server process:
+      generated → renamed → survived reconnect on a NEW socket with the same
+      playerId → reserved name rejected.
 - [ ] 2.3 Matchmaking queue + "Searching…" screen
 - [ ] 2.4 Private rooms (create, code, share link, join)
 - [ ] 2.5 Lobby (player cards, character select, arena preview, ready, chat, ping)

@@ -1,5 +1,6 @@
 import { NavLink } from 'react-router-dom';
 import { ConnectionBadge } from '@/ui/ConnectionBadge';
+import { IdentityChip } from '@/features/identity/IdentityChip';
 import { Wordmark } from '@/ui/Wordmark';
 import { cn } from '@/ui/cn';
 
@@ -39,13 +40,7 @@ export function TopNav() {
 
         <div className="ml-auto flex items-center gap-4">
           <ConnectionBadge />
-          {/* Guest identity chip lands in 2.2, once names actually exist. */}
-          <NavLink
-            to="/profile"
-            className="clip-notch border border-line-bright px-4 py-2 font-display text-xs font-600 uppercase tracking-[0.15em] text-ink-dim transition-colors hover:border-p2 hover:text-ink"
-          >
-            Profile
-          </NavLink>
+          <IdentityChip />
         </div>
       </div>
     </header>

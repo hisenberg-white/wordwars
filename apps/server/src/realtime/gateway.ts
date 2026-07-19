@@ -11,6 +11,7 @@ import {
 } from '@wordwars/shared';
 import { corsOrigins } from '../config/env.js';
 import { logger } from '../logger.js';
+import { registerGuestHandlers } from './handlers/guest.js';
 import { RateLimiter, ruleFor } from './rateLimit.js';
 import { validated } from './validate.js';
 
@@ -52,8 +53,9 @@ export function createGateway(httpServer: HttpServer): GameServer {
    * has to null-check identity, and there is no window where a socket exists
    * without one.
    *
-   * This is a provisional identity — real guest naming and token reclamation
-   * arrive with `guest:init` in step 2.2.
+   * This identity is provisional. `guest:init` replaces it with a real
+   * generated or restored name, but a socket is never without one — which is
+   * why no handler has to null-check identity.
    */
   io.use((socket, next) => {
     const playerId = asPlayerId(randomUUID());
@@ -89,6 +91,8 @@ export function createGateway(httpServer: HttpServer): GameServer {
       log.warn({ event }, 'Rate limited');
       socket.emit('error', { code: 'RATE_LIMITED', detail: String(event) });
     });
+
+    registerGuestHandlers(socket);
 
     /**
      * Heartbeat / clock sync.
