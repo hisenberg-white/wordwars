@@ -225,6 +225,128 @@ describe('gateway', () => {
     });
   });
 
+  describe('matchmaking', () => {
+    /** Establishes a real identity, as the client does before queueing. */
+    async function identified(nickname: string): Promise<TestClient> {
+      const client = await connectClient();
+      await client.timeout(2_000).emitWithAck('guest:init', { nickname });
+      return client;
+    }
+
+    const waitFor = <T>(client: TestClient, event: 'mm:found' | 'mm:searching') =>
+      new Promise<T>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error(`timeout waiting for ${event}`)), 4_000);
+        client.once(event, ((payload: T) => {
+          clearTimeout(timer);
+          resolve(payload);
+        }) as never);
+      });
+
+    it('puts a lone player into a searching state', async () => {
+      const client = await identified('AloneWolf');
+      const searching = waitFor<{ queuedAt: number; estimatedWaitMs: number }>(
+        client,
+        'mm:searching',
+      );
+
+      const res = await client.timeout(2_000).emitWithAck('mm:join', {
+        mode: '1v1',
+        characterId: 'ninja',
+      });
+
+      expect(res.ok).toBe(true);
+      await expect(searching).resolves.toMatchObject({
+        queuedAt: expect.any(Number),
+        estimatedWaitMs: expect.any(Number),
+      });
+    });
+
+    /** The core of the whole step: two humans find each other. */
+    it('pairs two queued players and tells each about the other', async () => {
+      const alice = await identified('SilentFox');
+      const bob = await identified('IronViper');
+
+      const aliceFound = waitFor<{ roomId: string; opponent: { nickname: string } }>(
+        alice,
+        'mm:found',
+      );
+      const bobFound = waitFor<{ roomId: string; opponent: { nickname: string } }>(bob, 'mm:found');
+
+      await alice.timeout(2_000).emitWithAck('mm:join', { mode: '1v1', characterId: 'ninja' });
+      await bob.timeout(2_000).emitWithAck('mm:join', { mode: '1v1', characterId: 'samurai' });
+
+      const [a, b] = await Promise.all([aliceFound, bobFound]);
+
+      // Each is told about the OTHER, and both land in the same room.
+      expect(a.opponent.nickname).toBe('IronViper');
+      expect(b.opponent.nickname).toBe('SilentFox');
+      expect(a.roomId).toBe(b.roomId);
+    });
+
+    it('places both players in a room containing exactly the two of them', async () => {
+      const alice = await identified('SilentFox');
+      const bob = await identified('IronViper');
+
+      const roomState = new Promise<{ members: Array<{ nickname: string }> }>((resolve) => {
+        alice.once('room:state', resolve as never);
+      });
+
+      await alice.timeout(2_000).emitWithAck('mm:join', { mode: '1v1', characterId: 'ninja' });
+      await bob.timeout(2_000).emitWithAck('mm:join', { mode: '1v1', characterId: 'samurai' });
+
+      const state = await roomState;
+      expect(state.members.map((m) => m.nickname).sort()).toEqual(['IronViper', 'SilentFox']);
+    });
+
+    it('refuses a second queue join from the same player', async () => {
+      const client = await identified('DoubleDipper');
+
+      await client.timeout(2_000).emitWithAck('mm:join', { mode: '1v1', characterId: 'ninja' });
+      const second = await client
+        .timeout(2_000)
+        .emitWithAck('mm:join', { mode: '1v1', characterId: 'ninja' });
+
+      expect(second.ok).toBe(false);
+      if (second.ok) throw new Error('unreachable');
+      expect(second.error.code).toBe('ALREADY_IN_QUEUE');
+    });
+
+    it('lets a player leave the queue', async () => {
+      const alice = await identified('Leaver');
+      await alice.timeout(2_000).emitWithAck('mm:join', { mode: '1v1', characterId: 'ninja' });
+
+      const cancelled = new Promise<void>((resolve) => alice.once('mm:cancelled', resolve));
+      await alice.timeout(2_000).emitWithAck('mm:leave');
+      await cancelled;
+
+      // Someone joining now must wait rather than pair with the departed player.
+      const bob = await identified('Later');
+      const searching = waitFor(bob, 'mm:searching');
+      await bob.timeout(2_000).emitWithAck('mm:join', { mode: '1v1', characterId: 'ninja' });
+
+      await expect(searching).resolves.toBeTruthy();
+    });
+
+    /**
+     * The ghost-match case: someone closes the tab while queued. The next
+     * player must not be paired against a socket that no longer exists.
+     */
+    it('drops a disconnected player from the queue', async () => {
+      const quitter = await identified('Quitter');
+      await quitter.timeout(2_000).emitWithAck('mm:join', { mode: '1v1', characterId: 'ninja' });
+
+      quitter.disconnect();
+      await new Promise((r) => setTimeout(r, 200));
+
+      const arrival = await identified('Arrival');
+      const searching = waitFor(arrival, 'mm:searching');
+      await arrival.timeout(2_000).emitWithAck('mm:join', { mode: '1v1', characterId: 'ninja' });
+
+      // Still searching means it correctly refused to pair with the ghost.
+      await expect(searching).resolves.toBeTruthy();
+    });
+  });
+
   it('drops the socket record on disconnect', async () => {
     const client = await connectClient();
     expect(await gateway.fetchSockets()).toHaveLength(1);

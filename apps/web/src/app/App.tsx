@@ -3,6 +3,7 @@ import { Backdrop } from '@/ui/Backdrop';
 import { useConnectionLifecycle } from '@/net/useConnection';
 import { LandingScreen } from '@/features/landing/LandingScreen';
 import { NotFoundScreen } from '@/features/landing/NotFoundScreen';
+import { PlayScreen } from '@/features/matchmaking/PlayScreen';
 import { PENDING_ROUTES } from './routes';
 
 export function App() {
@@ -14,6 +15,7 @@ export function App() {
       <div className="relative min-h-full">
         <Routes>
           <Route path="/" element={<LandingScreen />} />
+          <Route path="/play" element={<PlayScreen />} />
           {PENDING_ROUTES.map(({ path, element }) => (
             <Route key={path} path={path} element={element} />
           ))}

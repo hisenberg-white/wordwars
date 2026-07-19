@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { connection, type ConnectionSnapshot } from './ConnectionManager';
 import { identity, type IdentitySnapshot } from './IdentityManager';
+import { matchmaking, type MatchmakingSnapshot } from './MatchmakingManager';
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
 
@@ -35,3 +36,11 @@ export function useIdentity(): IdentitySnapshot {
 }
 
 export const renameSelf = (nickname: string): void => identity.rename(nickname);
+
+export function useMatchmaking(): MatchmakingSnapshot {
+  return useSyncExternalStore(
+    matchmaking.subscribe,
+    matchmaking.getSnapshot,
+    matchmaking.getSnapshot,
+  );
+}

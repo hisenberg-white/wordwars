@@ -89,6 +89,12 @@ export interface SocketData {
   identity: PlayerIdentity;
   roomId: string | null;
   matchId: MatchId | null;
+  /**
+   * Last measured round-trip time, refreshed by `match:heartbeat`. Held server
+   * side so the lobby can show every player's ping, not just your own — seeing
+   * that your opponent is on 200ms explains a lot about how a match felt.
+   */
+  ping: number | null;
 }
 
 export interface GuestInitResult {

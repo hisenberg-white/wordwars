@@ -12,16 +12,6 @@ export const PENDING_ROUTES: ReadonlyArray<{
   element: ReactElement;
 }> = [
   {
-    path: '/play',
-    element: (
-      <ComingSoonScreen
-        step="2.3"
-        title="Quick Match"
-        description="Matchmaking puts you against the next available player and drops you straight into a countdown. Being built next."
-      />
-    ),
-  },
-  {
     path: '/room',
     element: (
       <ComingSoonScreen

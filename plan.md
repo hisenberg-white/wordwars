@@ -185,7 +185,41 @@ compile-verified and test-verified but never actually looked at.
       → 52 tests total. Live end-to-end verified against the real server process:
       generated → renamed → survived reconnect on a NEW socket with the same
       playerId → reserved name rejected.
-- [ ] 2.3 Matchmaking queue + "Searching…" screen
+- [x] 2.3 Matchmaking queue + "Searching…" screen
+      → `MatchmakingService` knows NOTHING about sockets — takes entries, hands back
+      pairings via callback. The failure modes here (player queued twice, paired
+      player left in queue, pairing with self) produce ghost matches rather than
+      crashes, so they need unit tests without a network. 11 tests.
+      → **Pairing is strict FIFO, no skill matching.** With guests there is no skill
+      signal to match on — rating needs accounts + history (Phase 4). FIFO also
+      gives the fairest waits, which matters far more than match quality while the
+      player base is small.
+      → `RoomRegistry` built here (matchmaking must put the pair somewhere); 2.4 adds
+      private-room features on top. Host = first to join; on host leave it passes to
+      the longest-present member (arbitrary but STABLE — everyone computes the same
+      answer with no negotiation round). Empty rooms self-destruct so codes aren't
+      held hostage. Internal `LiveRoom` ≠ wire `RoomState`, so a password hash
+      cannot leak by someone adding a field to a shared interface.
+      → **Room codes exclude I/L/O/S/0/1/5/8.** Codes get read aloud and typed from
+      screenshots; every look-alike is a friend who fails to join. 28^6 ≈ 482M is
+      still ample. Test asserts no look-alike is ever emitted.
+      → Pairing lives in the gateway, not the handler — it needs BOTH sockets, and a
+      per-socket handler only ever has one.
+      → Disconnect cleanup on both queue AND room. If a player vanishes between
+      queueing and pairing, the survivor is REQUEUED rather than dropped into a
+      room with a ghost.
+      → Searching screen shows a real elapsed counter (a moving number reads as
+      progress; a spinner reads as broken after ~4s) and rotates combat tips, so a
+      first-timer learns accuracy-beats-speed BEFORE losing a match to it.
+      Elapsed time ticks in the COMPONENT, not the store — a 1Hz counter must not
+      re-render every matchmaking subscriber.
+      → `OpponentFound` VS reveal: naming the opponent turns an anonymous queue into
+      a person to beat.
+      → 79 tests. Live-verified: two clients queued → same room → each told about
+      the other.
+      → **OPEN PRODUCT QUESTION:** with no players online, a real user waits forever.
+      Needs bots or a training fallback before any public launch. Flagged, not
+      solved — it's a product decision, not a technical one.
 - [ ] 2.4 Private rooms (create, code, share link, join)
 - [ ] 2.5 Lobby (player cards, character select, arena preview, ready, chat, ping)
 - [ ] 2.6 Host settings panel + 3-2-1-FIGHT countdown
