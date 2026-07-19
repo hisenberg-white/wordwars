@@ -529,7 +529,42 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
       → 172 web tests.
       → STILL NOT VISUALLY VERIFIED. The design layer is now well covered by tests;
       the drawing layer is not, and cannot be without a browser.
-- [ ] 3.6 HUD — HP bars, combo counter, ultimate meter, text band
+- [x] 3.6 HUD — HP bars, combo counter, ultimate meter, text band
+      → **The D3 promise is now PROVEN, not asserted.** `MatchHud` renders its
+      structure once and never re-renders during a match; every update is pushed
+      into children through registered callbacks, and each child writes its own DOM
+      through refs. `TypingBand.test.tsx` holds a reference to a character element,
+      fires a burst of keystrokes, and asserts the SAME node survives — if a
+      keystroke ever caused a React render the subtree would be replaced and the
+      identity would change. Also asserts 200 keystrokes add zero DOM nodes.
+      → `hudModel.ts` is pure and tested (17 tests). The interesting behaviour is
+      RECONCILIATION: predicted damage lands instantly, the 10Hz snapshot corrects
+      any drift, and the server always wins. Prediction removes latency from the
+      FEEL; it never argues with the result. A HUD that drifts is a player who
+      thinks they won.
+      → HP bar has two layers — a fast fill that snaps and a slow ghost that drains
+      a beat behind. The GAP between them is the hit: you see how much you just
+      lost, not merely where you ended up. Ghost catches up on a CSS transition, so
+      it costs no JS per frame.
+      → Combo counter is hidden below 2 ("COMBO x1" on every word would make the
+      number meaningless) and SCALES with tier, so a 40-combo is physically larger
+      than a 6-combo — the player reads momentum without parsing a number. Pop is
+      retriggered by class-removal + forced reflow, otherwise consecutive hits at
+      the same tier would not animate.
+      → Ultimate meter is gold, and gold is used for nothing else in the product
+      (1.4 rule). The colour itself is the signal.
+      → Typing band: only the ACTIVE word is split per character; the rest are
+      plain text nodes. Per keystroke it touches one `data-state` attribute per
+      character and nothing else. Rebuilds once per WORD, not per keystroke.
+      → Character states are styled by CSS attribute selectors rather than
+      Tailwind classes — one attribute write beats swapping class lists per char.
+      → Cursor is a solid underline, NOT a blinking caret: a blink is an animation
+      the eye tracks, and anything pulling attention off the fighters works against
+      the game.
+      → **§0 compliance, deliberately:** no WPM, no accuracy %, no progress bar, no
+      match timer anywhere in the HUD. Progress is the opponent's HP going down.
+      Band sits low and thin so the fighters own the frame.
+      → 201 web tests.
 - [ ] 3.7 Game feel — hit stop, screen shake, damage numbers
 - [ ] 3.8 Audio + SFX
 - [ ] 3.9 Victory/defeat screen + rematch

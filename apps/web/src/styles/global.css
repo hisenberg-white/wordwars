@@ -121,3 +121,74 @@
     text-shadow: 0 0 24px rgb(0 224 255 / 0.55);
   }
 }
+
+@layer components {
+  /**
+   * Typing band character states.
+   *
+   * Styled with plain CSS attribute selectors rather than Tailwind classes
+   * because the band is updated imperatively (see TypingBand): toggling one
+   * `data-state` attribute is a single DOM write, where swapping class lists
+   * per character would be several.
+   */
+  .ww-word {
+    transition: opacity 160ms ease;
+  }
+
+  /* Already fought. Dimmed hard so the eye is never dragged backwards. */
+  .ww-word[data-state='done'] {
+    opacity: 0.22;
+  }
+
+  .ww-word[data-state='upcoming'] {
+    color: var(--color-ink-faint);
+  }
+
+  .ww-word[data-state='active'] {
+    color: var(--color-ink);
+  }
+
+  /* A repaired-but-still-dirty word: the text is right, the record is not. */
+  .ww-word[data-dirty] {
+    text-decoration: underline wavy var(--color-danger);
+    text-underline-offset: 6px;
+  }
+
+  .ww-char[data-state='hit'] {
+    color: var(--color-p2);
+  }
+
+  .ww-char[data-state='wrong'] {
+    color: white;
+    background: var(--color-danger);
+    border-radius: 2px;
+  }
+
+  .ww-char[data-state='pending'] {
+    color: var(--color-ink-dim);
+  }
+
+  /*
+   * The cursor is a solid underline rather than a blinking caret. A blink is
+   * an animation the player's eye tracks during combat, and anything that
+   * pulls attention off the fighters is working against the game.
+   */
+  .ww-char[data-state='cursor'] {
+    color: var(--color-ink);
+    box-shadow: inset 0 -3px 0 var(--color-ultimate);
+  }
+
+  /* Combo counter pop, retriggered by class removal + reflow. */
+  @keyframes combo-pop {
+    0% {
+      filter: brightness(2.2);
+    }
+    100% {
+      filter: brightness(1);
+    }
+  }
+
+  .combo-pop {
+    animation: combo-pop 260ms ease-out;
+  }
+}

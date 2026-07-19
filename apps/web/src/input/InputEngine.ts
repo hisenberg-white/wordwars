@@ -128,6 +128,23 @@ export class InputEngine {
     return this.words[this.wordIndex] ?? null;
   }
 
+  /**
+   * The slice of text around the cursor, for the on-screen band.
+   *
+   * A window rather than the whole list: the player can only read a line or
+   * two, and handing the renderer thousands of streamed words would mean
+   * rebuilding them all every time the cursor moves.
+   */
+  window(before: number, after: number): { words: string[]; activeIndex: number } {
+    const start = Math.max(0, this.wordIndex - before);
+    const end = Math.min(this.words.length, this.wordIndex + after + 1);
+
+    return {
+      words: this.words.slice(start, end),
+      activeIndex: this.wordIndex - start,
+    };
+  }
+
   // ---- Subscription -----------------------------------------------------
 
   onCommit(listener: CommitListener): () => void {
