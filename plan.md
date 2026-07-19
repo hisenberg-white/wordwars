@@ -805,7 +805,45 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
       unknown account give identical errors, /me resolves and rejects correctly.
       → **NOT DONE: the Prisma implementation.** Accounts are lost on restart, the
       server warns about it at boot, and the UI says so on hover. Needs Docker.
-- [ ] 4.2 Profile + stats pipeline + XP/levels
+- [x] 4.2 Profile + stats pipeline + XP/levels
+      → `services/progression.ts` is pure and tested (16 tests). Two rules shape
+      every number:
+      → **A loss must still pay.** The base award (60) is the LARGEST single
+      component — larger than the win bonus (45) — because a player who loses and
+      gains nothing has been told the last ninety seconds were worthless, and they
+      do not queue again. Tested: a loss earns more than 60% of a win.
+      → **Performance beats outcome.** A clean, high-combo LOSS out-earns a sloppy
+      WIN. That points the incentive at playing well rather than at farming weak
+      opponents. Tested directly.
+      → Accuracy XP scales from an 80% floor rather than from zero — rewarding the
+      gap between 40% and 60% would be paying for flailing. Combo XP is capped so
+      one freak streak cannot out-earn a whole match of solid play.
+      → Level curve `200 × (n-1)^1.6`: level 2 lands after ~2 matches so a new
+      player sees progress immediately; level 10 takes ~40. Tests pin both ends,
+      plus monotonicity and self-consistency with the thresholds.
+      → **Match results are recorded AFTER `match:end` is broadcast, never before.**
+      The results screen must appear the instant the fight ends — making both
+      players wait on a database write to see who won would put storage latency in
+      front of the most satisfying moment in the product. A failed write is logged
+      and swallowed: losing a stats row is a bad day for one profile, throwing would
+      take down room teardown with it.
+      → **A signed-in player keeps their GUEST playerId.** That id is what rooms,
+      matches and reconnection are keyed on; swapping it at sign-in would drop
+      somebody out of their own match. The account only decides where results are
+      ATTRIBUTED. `guest:init` now optionally carries an account token, so identity
+      is still established through ONE event rather than two that can disagree.
+      → Guests' matches are recorded too (null userId) — they are real matches that
+      appear in history and are adopted on registration (4.1).
+      → Profile is ONE row read plus a bounded history query. The stats are
+      denormalised precisely so this never becomes an aggregate over every match a
+      player has ever fought (§1.6) — that query gets slower exactly as the game
+      gets more popular.
+      → Signed-out profile reads as an INVITATION, not a wall: it says what an
+      account buys rather than demanding one on principle.
+      → 230 server tests. **Live-verified 16 checks** with two real accounts playing
+      a real match: account name used as identity, not flagged as guest, match
+      counted, win/loss recorded, 43 words and combo 43 captured, 210 XP and a
+      level-up, history with the opponent named — and the LOSER still earned 60 XP.
 - [ ] 4.3 Achievements engine
 - [ ] 4.4 Leaderboards
 - [ ] 4.5 Friends + match history

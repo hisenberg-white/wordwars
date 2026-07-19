@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { io as createClient, type Socket as ClientSocket } from 'socket.io-client';
 import type { Ack, ClientToServerEvents, RoomState, ServerToClientEvents } from '@wordwars/shared';
 import { createGateway, type GameServer } from './gateway.js';
+import { createMemoryRepositories } from '../db/memory.js';
 
 /**
  * Gateway integration tests.
@@ -37,7 +38,8 @@ function connectClient(): Promise<TestClient> {
 
 beforeEach(async () => {
   httpServer = createServer();
-  gateway = createGateway(httpServer);
+  // Fresh repositories per test, so accounts and stats never leak between them.
+  gateway = createGateway(httpServer, createMemoryRepositories());
 
   await new Promise<void>((resolve) => {
     httpServer.listen(0, '127.0.0.1', resolve);

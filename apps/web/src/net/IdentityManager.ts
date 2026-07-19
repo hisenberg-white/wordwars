@@ -59,13 +59,26 @@ class IdentityManager {
     this.emitInit(stored ? { token: stored.token } : {});
   }
 
+  /**
+   * Re-announces with the account token attached.
+   *
+   * Called after signing in so match results start being attributed to the
+   * account. The guest playerId is deliberately preserved — it is what rooms,
+   * matches and reconnection are keyed on, and swapping it here would drop
+   * somebody out of a match they are currently playing.
+   */
+  attachAccount(accountToken: string): void {
+    const stored = this.read();
+    this.emitInit({ ...(stored ? { token: stored.token } : {}), accountToken });
+  }
+
   rename(nickname: string): void {
     const stored = this.read();
     this.publish({ status: 'renaming', error: null });
     this.emitInit(stored ? { token: stored.token, nickname } : { nickname });
   }
 
-  private emitInit(payload: { token?: string; nickname?: string }): void {
+  private emitInit(payload: { token?: string; nickname?: string; accountToken?: string }): void {
     const socket = this.socket;
     if (!socket?.connected) return;
 

@@ -15,7 +15,7 @@ import { createGateway } from './realtime/gateway.js';
 const repositories = createMemoryRepositories();
 const app = createApp(repositories);
 const httpServer = createServer(app);
-const io = createGateway(httpServer);
+const io = createGateway(httpServer, repositories);
 
 httpServer.listen(env.PORT, env.HOST, () => {
   logger.info(

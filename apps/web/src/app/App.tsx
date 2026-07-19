@@ -9,6 +9,7 @@ import { NotFoundScreen } from '@/features/landing/NotFoundScreen';
 import { PlayScreen } from '@/features/matchmaking/PlayScreen';
 import { RoomEntryScreen } from '@/features/room/RoomEntryScreen';
 import { RoomScreen } from '@/features/room/RoomScreen';
+import { ProfileScreen } from '@/features/profile/ProfileScreen';
 import { PENDING_ROUTES } from './routes';
 
 export function App() {
@@ -40,6 +41,7 @@ export function App() {
           <Route path="/play" element={<PlayScreen />} />
           <Route path="/room" element={<RoomEntryScreen />} />
           <Route path="/room/:code" element={<RoomScreen />} />
+          <Route path="/profile" element={<ProfileScreen />} />
           {PENDING_ROUTES.map(({ path, element }) => (
             <Route key={path} path={path} element={element} />
           ))}

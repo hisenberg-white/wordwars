@@ -51,14 +51,4 @@ export const PENDING_ROUTES: ReadonlyArray<{
       />
     ),
   },
-  {
-    path: '/profile',
-    element: (
-      <ComingSoonScreen
-        step="4.2"
-        title="Profile"
-        description="Stats, match history, achievements and XP. Guests can play forever; profiles need an account."
-      />
-    ),
-  },
 ];

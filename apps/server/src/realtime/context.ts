@@ -1,4 +1,6 @@
 import { MatchmakingService, type Pairing } from '../matchmaking/MatchmakingService.js';
+import type { Repositories } from '../db/repositories.js';
+import { AuthService } from '../services/auth.js';
 import { MatchRegistry } from '../match/MatchRegistry.js';
 import { RoomRegistry, type LiveRoom } from '../rooms/RoomRegistry.js';
 
@@ -11,6 +13,8 @@ import { RoomRegistry, type LiveRoom } from '../rooms/RoomRegistry.js';
  * unrelated tests — a genuinely confusing failure to debug.
  */
 export interface RealtimeContext {
+  readonly repos: Repositories;
+  readonly auth: AuthService;
   readonly rooms: RoomRegistry;
   readonly matches: MatchRegistry;
   readonly matchmaking: MatchmakingService;
@@ -23,10 +27,13 @@ export interface RealtimeContext {
 }
 
 export function createRealtimeContext(
+  repos: Repositories,
   onPaired: (pairing: Pairing) => void,
   onMatchBegin: (room: LiveRoom) => void = () => {},
 ): RealtimeContext {
   return {
+    repos,
+    auth: new AuthService(repos),
     rooms: new RoomRegistry(),
     matches: new MatchRegistry(),
     matchmaking: new MatchmakingService(onPaired),

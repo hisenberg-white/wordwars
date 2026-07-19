@@ -1,4 +1,5 @@
 import type { AuthenticatedUser } from '@wordwars/shared';
+import { identity } from './IdentityManager';
 
 const STORAGE_KEY = 'wordwars.account';
 const API = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
@@ -98,6 +99,9 @@ class AuthManager {
       }
 
       this.storeToken(payload.token, payload.expiresAt ?? Date.now() + 86_400_000);
+      // Tell the live socket, so results start counting toward this account
+      // without needing a reload.
+      identity.attachAccount(payload.token);
       this.publish({
         status: 'signed-in',
         user: payload.user,

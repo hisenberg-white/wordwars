@@ -10,6 +10,7 @@ import { logger } from '../../logger.js';
 import { issueGuestToken, verifyGuestToken } from '../../services/guestToken.js';
 import { generateNickname } from '../../services/nickname.js';
 import type { GameSocket } from '../gateway.js';
+import type { AuthService } from '../../services/auth.js';
 import { validated } from '../validate.js';
 
 /**
@@ -31,19 +32,30 @@ import { validated } from '../validate.js';
 export function registerGuestHandlers(
   socket: GameSocket,
   reattach: (socket: GameSocket) => void = () => {},
+  auth?: AuthService,
 ): void {
   const log = logger.child({ socketId: socket.id });
 
   socket.on(
     'guest:init',
-    validated(guestInitSchema, (payload, ack) => {
+    validated(guestInitSchema, async (payload, ack) => {
       const restored = payload.token ? verifyGuestToken(payload.token) : null;
+
+      /*
+       * A signed-in player keeps their GUEST playerId.
+       *
+       * That id is what rooms, matches and reconnection are keyed on, so
+       * swapping it at sign-in would drop somebody out of their own match. The
+       * account only decides where results are ATTRIBUTED — it never changes
+       * who the socket is mid-session.
+       */
+      const account = payload.accountToken ? await auth?.authenticate(payload.accountToken) : null;
 
       // A token that fails verification is not an error the player can act on.
       // Silently issuing a fresh identity is the right recovery: an expired
       // token after a fortnight away should look like a normal visit, not a
       // failure state.
-      let nickname = restored?.nickname ?? generateNickname();
+      let nickname = account?.username ?? restored?.nickname ?? generateNickname();
       const playerId = restored ? asPlayerId(restored.playerId) : undefined;
 
       if (payload.nickname !== undefined) {
@@ -58,13 +70,14 @@ export function registerGuestHandlers(
       const { token, payload: issued } = issueGuestToken(nickname, playerId);
 
       socket.data.playerId = issued.playerId;
+      socket.data.userId = account?.id ?? null;
       socket.data.identity = {
         playerId: issued.playerId,
         nickname: issued.nickname,
-        isGuest: true,
-        level: 1,
-        avatarUrl: null,
-        countryCode: null,
+        isGuest: account === null,
+        level: account?.level ?? 1,
+        avatarUrl: account?.avatarUrl ?? null,
+        countryCode: account?.countryCode ?? null,
       };
 
       const result: GuestInitResult = {

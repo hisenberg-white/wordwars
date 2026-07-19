@@ -98,6 +98,14 @@ export interface SocketData {
   roomId: string | null;
   matchId: MatchId | null;
   /**
+   * The signed-in account, if there is one.
+   *
+   * Null for guests, who remain first-class players — this only decides
+   * whether a match result is ATTRIBUTED to durable stats, never whether it
+   * can be played.
+   */
+  userId: string | null;
+  /**
    * Last measured round-trip time, refreshed by `match:heartbeat`. Held server
    * side so the lobby can show every player's ping, not just your own — seeing
    * that your opponent is on 200ms explains a lot about how a match felt.

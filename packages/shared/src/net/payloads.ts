@@ -35,6 +35,14 @@ export const guestInitSchema = z.object({
   nickname: nickname.optional(),
   /** Reclaim a previous identity after a refresh. */
   token: z.string().max(512).optional(),
+  /**
+   * An account session token, when the player is signed in.
+   *
+   * Identity is established through ONE event whether or not somebody has an
+   * account, so there is a single path to get right rather than two that can
+   * disagree about who this socket is.
+   */
+  accountToken: z.string().max(512).optional(),
 });
 
 export const matchmakingJoinSchema = z.object({

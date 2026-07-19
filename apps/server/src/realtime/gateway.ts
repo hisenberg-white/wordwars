@@ -21,6 +21,7 @@ import { registerRoomHandlers } from './handlers/room.js';
 import { startCountdown } from '../rooms/countdown.js';
 import { startMatchForRoom } from '../match/startMatch.js';
 import { handleMatchDisconnect, handleReconnect } from '../match/presence.js';
+import type { Repositories } from '../db/repositories.js';
 import { RateLimiter, ruleFor } from './rateLimit.js';
 import { validated } from './validate.js';
 
@@ -46,11 +47,11 @@ export interface Gateway {
 /** How long the "opponent found" reveal holds before the count begins. */
 const QUICK_MATCH_REVEAL_MS = 1_800;
 
-export function createGateway(httpServer: HttpServer): GameServer {
-  return createGatewayWithContext(httpServer).io;
+export function createGateway(httpServer: HttpServer, repos: Repositories): GameServer {
+  return createGatewayWithContext(httpServer, repos).io;
 }
 
-export function createGatewayWithContext(httpServer: HttpServer): Gateway {
+export function createGatewayWithContext(httpServer: HttpServer, repos: Repositories): Gateway {
   const io: GameServer = new Server(httpServer, {
     // WebSocket only. Long-polling fallback degrades combat feel past the point
     // of being worth supporting (plan §7) — a player on polling would rather
@@ -132,7 +133,7 @@ export function createGatewayWithContext(httpServer: HttpServer): Gateway {
 
   // The countdown-complete seam from 2.6, now filled in: this is where a room
   // becomes a live match.
-  const ctx = createRealtimeContext(onPaired, (room) => {
+  const ctx = createRealtimeContext(repos, onPaired, (room) => {
     startMatchForRoom(io, ctx, room);
   });
 
@@ -156,6 +157,7 @@ export function createGatewayWithContext(httpServer: HttpServer): Gateway {
     socket.data.roomId = null;
     socket.data.matchId = null;
     socket.data.ping = null;
+    socket.data.userId = null;
 
     next();
   });
@@ -179,7 +181,7 @@ export function createGatewayWithContext(httpServer: HttpServer): Gateway {
 
     // The reattach hook fires once a restored token proves this socket
     // belongs to a match already in progress.
-    registerGuestHandlers(socket, (s) => handleReconnect(io, ctx, s));
+    registerGuestHandlers(socket, (s) => handleReconnect(io, ctx, s), ctx.auth);
     registerMatchmakingHandlers(socket, ctx);
     registerRoomHandlers(socket, ctx, io);
     registerMatchHandlers(socket, ctx, io);

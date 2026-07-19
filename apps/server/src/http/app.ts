@@ -5,6 +5,7 @@ import { corsOrigins, isProduction } from '../config/env.js';
 import { logger } from '../logger.js';
 import { healthRouter } from './routes/health.js';
 import { createAuthRouter } from './routes/auth.js';
+import { createProfileRouter } from './routes/profile.js';
 import type { Repositories } from '../db/repositories.js';
 
 /**
@@ -43,6 +44,7 @@ export function createApp(repos: Repositories): Express {
 
   app.use('/health', healthRouter);
   app.use('/api/auth', createAuthRouter(repos));
+  app.use('/api/profile', createProfileRouter(repos));
 
   app.use((_req: Request, res: Response) => {
     res.status(404).json({ error: { code: 'NOT_FOUND' } });

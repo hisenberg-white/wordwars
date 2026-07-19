@@ -1,9 +1,10 @@
-import { asRoomId } from '@wordwars/shared';
+import { asRoomId, type PlayerId, type UserId } from '@wordwars/shared';
 import { logger } from '../logger.js';
 import type { LiveRoom } from '../rooms/RoomRegistry.js';
 import type { RealtimeContext } from '../realtime/context.js';
 import type { GameServer } from '../realtime/gateway.js';
 import { ServerMatch, type MatchParticipant, type MatchSink } from './ServerMatch.js';
+import { recordMatchResult } from './recordResult.js';
 
 /**
  * Turns a room whose countdown has finished into a live match.
@@ -38,7 +39,11 @@ export function startMatchForRoom(
     snapshot: (_matchId, snapshot) => io.to(room.id).emit('match:state', snapshot),
     sentence: (_matchId, sentence) => io.to(room.id).emit('match:sentence', sentence),
     ended: (_matchId, result) => {
+      // Broadcast FIRST. The results screen must appear the instant the fight
+      // ends — nobody should wait on a database write to see who won.
       io.to(room.id).emit('match:end', result);
+
+      void recordMatchResult(ctx.repos, result, accountsOf(io, room.id), nicknamesOf(participants));
 
       room.phase = 'post-match';
       io.to(room.id).emit('room:state', ctx.rooms.toState(room));
@@ -81,6 +86,23 @@ export function startMatchForRoom(
   });
 
   return match;
+}
+
+/** playerId → userId for whoever in this room is signed in. */
+function accountsOf(io: GameServer, roomId: string): Map<PlayerId, UserId> {
+  const accounts = new Map<PlayerId, UserId>();
+
+  for (const socket of io.sockets.sockets.values()) {
+    if (socket.data.roomId !== roomId || !socket.data.userId) continue;
+    accounts.set(socket.data.playerId, socket.data.userId as UserId);
+  }
+
+  return accounts;
+}
+
+/** Names are copied in so history reads correctly after a rename. */
+function nicknamesOf(participants: readonly MatchParticipant[]): Map<PlayerId, string> {
+  return new Map(participants.map((p) => [p.playerId, p.nickname]));
 }
 
 function toParticipant(member: {
