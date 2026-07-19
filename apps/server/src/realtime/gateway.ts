@@ -140,7 +140,44 @@ export function createGatewayWithContext(
      * "opponent found" reveal land before the count starts.
      */
     setTimeout(() => {
-      if (ctx.rooms.get(room.id)) startCountdown(io, ctx.rooms, room, ctx.onMatchBegin);
+      const live = ctx.rooms.get(room.id);
+      if (!live) return;
+
+      if (ctx.rooms.hasOpponent(live)) {
+        startCountdown(io, ctx.rooms, live, ctx.onMatchBegin);
+        return;
+      }
+
+      /*
+       * The opponent went away during the reveal.
+       *
+       * This used to check only that the room still existed, so a room that
+       * had lost a player started anyway — one fighter alone in a match,
+       * while the other sat on "preparing the arena" forever with nothing on
+       * screen to explain it and no way out.
+       *
+       * Whoever is still here goes back to the front of the queue, which is
+       * the same recovery a vanished opponent gets at pairing time.
+       */
+      for (const member of live.members.values()) {
+        const socket = findSocket(io, member.identity.playerId);
+        if (!socket) continue;
+
+        socket.data.roomId = null;
+        void socket.leave(live.id);
+        socket.emit('mm:cancelled');
+
+        ctx.matchmaking.join({
+          playerId: member.identity.playerId,
+          identity: member.identity,
+          characterId: member.characterId,
+          mode: pairing.mode,
+          queuedAt: Date.now(),
+        });
+      }
+
+      ctx.rooms.destroy(live);
+      logger.info({ roomId: live.id }, 'Pairing lapsed before the count — requeued');
     }, QUICK_MATCH_REVEAL_MS);
   };
 

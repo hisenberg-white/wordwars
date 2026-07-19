@@ -1,4 +1,4 @@
-import { ackError, ackOk, matchmakingJoinSchema } from '@wordwars/shared';
+import { ackError, ackOk, asRoomId, matchmakingJoinSchema } from '@wordwars/shared';
 import { logger } from '../../logger.js';
 import type { RealtimeContext } from '../context.js';
 import type { GameServer, GameSocket } from '../gateway.js';
@@ -41,16 +41,45 @@ export function registerMatchmakingHandlers(
         return;
       }
 
+      const current = socket.data.roomId ? ctx.rooms.get(asRoomId(socket.data.roomId)) : null;
+
+      /*
+       * A pairing already underway is NOT abandoned.
+       *
+       * A client can emit this more than once — a re-render, a reconnect, an
+       * impatient second click — and for the brief window between "opponent
+       * found" and the countdown, obeying the second one is catastrophic: it
+       * pulls the player out of the room they were just matched into, leaving
+       * their opponent alone in a fight against nobody while they go back to
+       * searching. Both players lose the match they had, and neither is told
+       * why.
+       *
+       * So a request to queue while a viable pairing is pending is treated as
+       * the duplicate it almost certainly is: acknowledged, and ignored.
+       *
+       * Scoped to quick-match rooms that have not started yet. A room the
+       * player chose to sit in, or one left over from a finished match, is
+       * still theirs to leave — that was the original ALREADY_IN_ROOM dead end
+       * and it must stay fixed.
+       */
+      const pairingPending =
+        current !== null &&
+        current.isQuickMatch &&
+        (current.phase === 'lobby' || current.phase === 'countdown') &&
+        ctx.rooms.hasOpponent(current);
+
+      if (pairingPending && current) {
+        ack(ackOk({ queuedAt: Date.now() }));
+        socket.emit('room:state', ctx.rooms.toState(current));
+        return;
+      }
+
       /*
        * Otherwise, being in a room is not a reason to refuse — it is a reason
        * to LEAVE it. Rejecting made Quick Match a dead end for anyone who had
        * already played: a room survives into `post-match` after the fight
        * ends, so the player most likely to want another match was the one
        * guaranteed to be told no.
-       *
-       * Being in a room AND in the queue at once is still forbidden — that
-       * would let somebody get pulled into a second match mid-lobby — which is
-       * exactly why this leaves first rather than simply allowing both.
        */
       leaveCurrentRoom(socket, ctx, io);
 

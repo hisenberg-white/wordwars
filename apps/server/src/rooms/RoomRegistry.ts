@@ -249,6 +249,21 @@ export class RoomRegistry {
     return players.length >= 2 && players.every((m) => m.isReady && m.connected);
   }
 
+  /**
+   * Two connected fighters — enough for a fight to happen.
+   *
+   * Deliberately NOT `canStart`, which also requires everybody to have pressed
+   * ready. Quick match skips ready-up entirely (both players committed by
+   * pressing Play Now), so `canStart` is permanently false for those rooms and
+   * using it to gate their countdown would mean no quick match ever begins.
+   * This asks the narrower question the matchmaking path actually has: is
+   * there still somebody to fight?
+   */
+  hasOpponent(room: LiveRoom): boolean {
+    const players = [...room.members.values()].filter((m) => !m.isSpectator);
+    return players.length >= 2 && players.every((m) => m.connected);
+  }
+
   /** The room a player belongs to, including while they are disconnected. */
   forPlayer(playerId: PlayerId): LiveRoom | null {
     const roomId = this.byPlayer.get(playerId);
