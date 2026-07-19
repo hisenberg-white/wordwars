@@ -300,7 +300,20 @@ describe('gateway', () => {
       expect(state.members.map((m) => m.nickname).sort()).toEqual(['IronViper', 'SilentFox']);
     });
 
-    it('refuses a second queue join from the same player', async () => {
+    /**
+     * Deliberately reversed: a duplicate queue request now SUCCEEDS.
+     *
+     * Refusing looked correct and broke the product. React StrictMode
+     * double-invokes effects in development, and a screen guarding on its own
+     * `status` reads the render it closed over — so the client queued twice,
+     * got ALREADY_IN_QUEUE back, and showed "Matchmaking failed" to a player
+     * the server was searching for perfectly happily.
+     *
+     * Clients re-send this for ordinary reasons: a re-render, a reconnect, an
+     * impatient second click. The honest answer to "please queue me" from
+     * somebody already queued is yes.
+     */
+    it('treats a second queue join from the same player as a no-op', async () => {
       const client = await identified('DoubleDipper');
 
       await client.timeout(2_000).emitWithAck('mm:join', { mode: '1v1', characterId: 'ninja' });
@@ -308,9 +321,7 @@ describe('gateway', () => {
         .timeout(2_000)
         .emitWithAck('mm:join', { mode: '1v1', characterId: 'ninja' });
 
-      expect(second.ok).toBe(false);
-      if (second.ok) throw new Error('unreachable');
-      expect(second.error.code).toBe('ALREADY_IN_QUEUE');
+      expect(second.ok).toBe(true);
     });
 
     it('lets a player leave the queue', async () => {
