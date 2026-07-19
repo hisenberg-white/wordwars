@@ -9,11 +9,7 @@ import {
   CRIT_CHANCE_MAX,
   CRIT_CHANCE_PER_COMBO,
   CRIT_MULTIPLIER,
-  RAGE_FIRST_AT_MS,
-  RAGE_FIRST_MULTIPLIER,
-  RAGE_HP_FRACTION,
-  RAGE_SECOND_AT_MS,
-  RAGE_SECOND_MULTIPLIER,
+  RAGE_TIERS,
   TEMPO_DIVISOR,
   TEMPO_INTERCEPT,
   TEMPO_MAX,
@@ -80,16 +76,18 @@ export function ultimateDamage(combo: number): number {
 /**
  * Sudden death multiplier.
  *
- * Only engages while BOTH fighters are still healthy — if someone is already
- * losing badly there is no stalemate to break, and doubling damage would just
- * rob them of a comeback.
+ * Purely a function of elapsed time. It applies to BOTH fighters equally, so
+ * it never hands the match to whoever happens to be ahead — it simply stops a
+ * slow fight from running forever. See the removed HP gate in constants.ts for
+ * why conditioning this on health was actively harmful.
  */
-export function rageMultiplier(elapsedMs: number, hpA: number, hpB: number, maxHp: number): number {
-  const threshold = maxHp * RAGE_HP_FRACTION;
-  if (hpA <= threshold || hpB <= threshold) return 1;
+export function rageMultiplier(elapsedMs: number): number {
+  // Highest tier the clock has passed. Walked in reverse so adding a tier
+  // never requires touching this loop.
+  for (let i = RAGE_TIERS.length - 1; i >= 0; i -= 1) {
+    if (elapsedMs >= RAGE_TIERS[i]!.atMs) return RAGE_TIERS[i]!.multiplier;
+  }
 
-  if (elapsedMs >= RAGE_SECOND_AT_MS) return RAGE_SECOND_MULTIPLIER;
-  if (elapsedMs >= RAGE_FIRST_AT_MS) return RAGE_FIRST_MULTIPLIER;
   return 1;
 }
 

@@ -122,17 +122,39 @@ export const ULTIMATE_DAMAGE_PER_COMBO = 6;
 // ---------------------------------------------------------------------------
 
 /**
- * Rage exists so a stalemate between two cautious players cannot run forever.
- * At the tuned numbers an average match ends near 56s, so this should almost
- * never fire — it is a safety valve, not a routine phase.
+ * Sudden death ramp.
+ *
+ * CORRECTED after balance simulation. The original two-step ramp (1.5× at 90s,
+ * 2× at 120s) was calibrated against skilled play, where matches end near 56s
+ * and Rage never fires. But two 40 WPM beginners deal a quarter of that damage
+ * output, and their matches ran **216 seconds** — a three-and-a-half minute
+ * slog inflicted on precisely the players most likely to give up on the game.
+ *
+ * Four steep tiers, all starting at 60s so skilled matches (which end near 59s
+ * or sooner) never see them at all. The ramp is aggressive on purpose: by the
+ * time a fight has run a full minute without resolving, ending it is worth more
+ * than preserving its pacing.
  */
-export const RAGE_FIRST_AT_MS = 90_000;
-export const RAGE_SECOND_AT_MS = 120_000;
-export const RAGE_FIRST_MULTIPLIER = 1.5;
-export const RAGE_SECOND_MULTIPLIER = 2.0;
+export const RAGE_TIERS: ReadonlyArray<{ readonly atMs: number; readonly multiplier: number }> = [
+  { atMs: 60_000, multiplier: 2.5 },
+  { atMs: 80_000, multiplier: 5.0 },
+  { atMs: 100_000, multiplier: 9.0 },
+  { atMs: 130_000, multiplier: 15.0 },
+];
 
-/** Both fighters must still be above this fraction of max HP for Rage to engage. */
-export const RAGE_HP_FRACTION = 0.4;
+/*
+ * REMOVED: the "both fighters must be healthy" gate.
+ *
+ * It was written for a gentle two-step ramp and actively defeated the
+ * mechanic's purpose. Rage would engage at the threshold, then SWITCH OFF the
+ * moment either fighter dropped below 40% — which is precisely when a long
+ * match most needs to end. Beginner matches barely improved because of it.
+ *
+ * The gate was also unnecessary. Rage is SYMMETRIC: both fighters deal more
+ * damage, so it does not hand the win to whoever is ahead. It compresses the
+ * remaining match without changing who is likely to take it — and a trailing
+ * player closes a gap faster under Rage, not slower.
+ */
 
 // ---------------------------------------------------------------------------
 // Presentation hints (cosmetic, but computed here so both ends agree)

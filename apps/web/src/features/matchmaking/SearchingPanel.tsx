@@ -21,7 +21,10 @@ const TIPS = [
   'You can repair a typo with backspace — but the word still breaks your combo.',
   'Perfect typing charges your Ultimate. The next word turns gold.',
   'Fighters are cosmetic. Nobody ever beat you because of their skin.',
-  'Accuracy beats raw speed. Every time.',
+  // Deliberately not "accuracy beats speed, every time" — balance simulation
+  // shows a big enough speed advantage does win, and a game should not make a
+  // promise its own numbers break.
+  'A steady 70 words a minute will beat a frantic 100 with typos.',
 ] as const;
 
 const TIP_INTERVAL_MS = 4_500;

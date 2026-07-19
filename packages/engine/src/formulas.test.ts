@@ -233,26 +233,48 @@ describe('computeDamage', () => {
 });
 
 describe('rageMultiplier', () => {
-  const healthy = MAX_HP;
-
   it('is inactive before the first threshold', () => {
-    expect(rageMultiplier(0, healthy, healthy, MAX_HP)).toBe(1);
-    expect(rageMultiplier(89_999, healthy, healthy, MAX_HP)).toBe(1);
-  });
-
-  it('ramps at 90s and again at 120s', () => {
-    expect(rageMultiplier(90_000, healthy, healthy, MAX_HP)).toBe(1.5);
-    expect(rageMultiplier(120_000, healthy, healthy, MAX_HP)).toBe(2);
+    expect(rageMultiplier(0)).toBe(1);
+    expect(rageMultiplier(59_999)).toBe(1);
   });
 
   /**
-   * Rage breaks stalemates. If someone is already losing badly there is no
-   * stalemate — doubling damage would just deny them a comeback.
+   * Four steep tiers. The original gentle ramp was calibrated against skilled
+   * play and left two 40 WPM beginners in a 189-second slog — see the balance
+   * suite for the measurements that drove this.
    */
-  it('stays off when either fighter is already low', () => {
-    const low = MAX_HP * 0.3;
-    expect(rageMultiplier(120_000, low, healthy, MAX_HP)).toBe(1);
-    expect(rageMultiplier(120_000, healthy, low, MAX_HP)).toBe(1);
+  it('ramps steeply once a fight has run past a minute', () => {
+    expect(rageMultiplier(60_000)).toBe(2.5);
+    expect(rageMultiplier(80_000)).toBe(5);
+    expect(rageMultiplier(100_000)).toBe(9);
+    expect(rageMultiplier(130_000)).toBe(15);
+  });
+
+  it('never steps backwards as time passes', () => {
+    let previous = 0;
+    for (let t = 0; t <= 200_000; t += 2_500) {
+      const value = rageMultiplier(t);
+      expect(value).toBeGreaterThanOrEqual(previous);
+      previous = value;
+    }
+  });
+
+  /**
+   * Skilled matches end near 59s, so they must never experience Rage at all —
+   * the ramp exists to converge slow fights, not to rush good ones.
+   */
+  it('leaves a well-played match untouched', () => {
+    expect(rageMultiplier(58_000)).toBe(1);
+  });
+
+  /**
+   * Deliberately NOT conditioned on health. The old "both fighters must be
+   * above 40%" gate switched Rage OFF the moment someone dropped low — exactly
+   * when a long match most needed to end. Rage is symmetric, so it never hands
+   * the win to whoever is ahead.
+   */
+  it('does not depend on either fighter’s health', () => {
+    expect(rageMultiplier(100_000)).toBe(9);
   });
 });
 

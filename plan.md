@@ -13,7 +13,7 @@ picked up cold and executed without re-deriving decisions.
 > **Any new session: start here.** Work the first unchecked box in the current
 > phase. Tick boxes as they land. Do not rebuild anything already ticked.
 
-**Current phase: Phase 3 — The Game** (Phases 1 and 2 complete)
+**Current phase: Phase 3 — The Game.** 3.1–3.10 complete; 3.11 gate PARTIALLY met.
 
 > Phase 3 is the point of the whole project. Everything so far exists to deliver
 > two players into a countdown; 3.1–3.11 is the fight. Re-read §0 (The One Rule)
@@ -721,7 +721,43 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
 
 **→ PHASE 3 IS CODE-COMPLETE. Only the 3.11 playtest gate remains.**
 
-- [ ] 3.11 **GATE: 20 internal playtest matches. Tune §5.2 before Phase 4.**
+- [~] 3.11 **GATE: 20 internal playtest matches. Tune §5.2 before Phase 4.**
+  → **PARTIALLY DONE. The measurable half is complete; the subjective half is
+  NOT and still blocks Phase 4.**
+  → `packages/engine/src/balance.test.ts` — 17 tests running thousands of
+  matches through the REAL engine and asserting the design's own claims. A
+  failure there is a design failure, not a code failure.
+  → **BUG #1 — the game contradicted its own marketing.** A matchmaking tip read
+  "Accuracy beats raw speed. Every time." Simulation shows accuracy wins up to
+  about a 50% speed gap and then loses. That crossover is CORRECT design (if
+  accuracy always won, speed would be worthless and the game would become
+  slow-and-careful), so the COPY was fixed rather than the game. A test now
+  pins the crossover so it cannot drift silently.
+  → **BUG #2 — beginner matches ran 189 SECONDS.** Measured across skill levels:
+  beginner 189s / casual 127s / average 96s / good 59s / strong 38s / elite 28s.
+  A 6.7× spread, with a three-minute slog inflicted on exactly the players most
+  likely to give up on the game.
+  → Root cause was NOT the ramp being too gentle — it was the `RAGE_HP_FRACTION`
+  gate. Rage engaged at the threshold and then SWITCHED OFF the moment either
+  fighter dropped below 40%, i.e. precisely when a long match most needed to
+  end. Two rounds of steepening the tiers barely moved the number (189 → 176s)
+  because the gate kept disabling them.
+  → Gate REMOVED. Rage is symmetric — both fighters deal more damage — so it
+  never hands the win to whoever is ahead, and a trailing player closes a gap
+  faster under it, not slower. The comeback argument that justified the gate
+  does not survive contact with the fact that it applies to both sides.
+  → Result: beginner 189→**105s**, casual 127→**86s**, average 96→**74s**, and
+  good/strong/elite completely UNTOUCHED (they finish before 60s and never see
+  Rage). Spread narrowed 6.7× → 3.8×.
+  → Rage is now four steep tiers from 60s (2.5× / 5× / 9× / 15×) and purely
+  time-based.
+  → 574 tests across the repo, all green.
+
+      **STILL OUTSTANDING — this is what blocks Phase 4:**
+      Nobody has played it. "Is it fun", "does it look right", and "does hit-stop
+      feel good" cannot be simulated. Run `pnpm dev`, open two tabs, create a
+      private room, and play ~20 matches. Tune `packages/engine/src/constants.ts` —
+      every value there carries its reasoning.
 
 ### Phase 4 — Progression
 

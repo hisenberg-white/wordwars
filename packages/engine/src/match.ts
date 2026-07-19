@@ -267,8 +267,7 @@ export function tick(state: EngineMatchState, elapsedMs: number): MatchDelta {
 
   state.elapsedMs = Math.max(state.elapsedMs, elapsedMs);
 
-  const [a, b] = state.fighters;
-  const next = rageMultiplier(state.elapsedMs, a.hp, b.hp, state.maxHp);
+  const next = rageMultiplier(state.elapsedMs);
 
   if (next === state.rageMultiplier) return EMPTY_DELTA;
 

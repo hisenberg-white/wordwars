@@ -371,16 +371,17 @@ describe('rage', () => {
   it('engages once past the threshold and announces itself once', () => {
     const state = newMatch();
 
-    expect(tick(state, 89_000).events).toHaveLength(0);
+    expect(tick(state, 59_000).events).toHaveLength(0);
 
-    const engaged = tick(state, 90_000);
-    expect(engaged.events).toEqual([{ type: 'rage', t: expect.any(Number), multiplier: 1.5 }]);
-    expect(state.rageMultiplier).toBe(1.5);
+    const engaged = tick(state, 60_000);
+    expect(engaged.events).toEqual([{ type: 'rage', t: expect.any(Number), multiplier: 2.5 }]);
+    expect(state.rageMultiplier).toBe(2.5);
 
     // Same tier again — nothing new to say.
-    expect(tick(state, 100_000).events).toHaveLength(0);
+    expect(tick(state, 70_000).events).toHaveLength(0);
 
-    expect(tick(state, 120_000).events[0]).toMatchObject({ type: 'rage', multiplier: 2 });
+    expect(tick(state, 80_000).events[0]).toMatchObject({ type: 'rage', multiplier: 5 });
+    expect(tick(state, 100_000).events[0]).toMatchObject({ type: 'rage', multiplier: 9 });
   });
 
   it('increases damage once active', () => {
@@ -389,7 +390,7 @@ describe('rage', () => {
     const calmDamage = MAX_HP - fighterOf(calm, BOB).hp;
 
     const raging = newMatch();
-    tick(raging, 120_000);
+    tick(raging, 60_000);
     type(raging, ALICE);
     const rageDamage = MAX_HP - fighterOf(raging, BOB).hp;
 
