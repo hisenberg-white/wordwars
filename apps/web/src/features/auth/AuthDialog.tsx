@@ -11,6 +11,7 @@ import { identity } from '@/net/IdentityManager';
 import { useAuth, useIdentity } from '@/net/useConnection';
 import { Button } from '@/ui/Button';
 import { Panel, PanelLabel } from '@/ui/Panel';
+import { Overlay } from '@/ui/Overlay';
 import { cn } from '@/ui/cn';
 
 type Mode = 'register' | 'login';
@@ -79,14 +80,8 @@ export function AuthDialog({
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label={mode === 'register' ? 'Create an account' : 'Sign in'}
-      className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-void/85 p-6 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <Panel className="w-full max-w-md p-7" onClick={(e) => e.stopPropagation()}>
+    <Overlay onClose={onClose} label={mode === 'register' ? 'Create an account' : 'Sign in'}>
+      <Panel className="w-full max-w-md p-7">
         <div className="flex gap-1">
           {(['register', 'login'] as const).map((m) => (
             <button
@@ -166,7 +161,7 @@ export function AuthDialog({
           </p>
         )}
       </Panel>
-    </div>
+    </Overlay>
   );
 }
 

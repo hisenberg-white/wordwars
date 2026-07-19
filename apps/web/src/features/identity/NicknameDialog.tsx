@@ -3,6 +3,7 @@ import { NICKNAME_ERROR_MESSAGE, NICKNAME_MAX, validateNickname } from '@wordwar
 import { renameSelf, useIdentity } from '@/net/useConnection';
 import { Button } from '@/ui/Button';
 import { Panel, PanelLabel } from '@/ui/Panel';
+import { Overlay } from '@/ui/Overlay';
 
 /**
  * Nickname editor.
@@ -50,14 +51,8 @@ export function NicknameDialog({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Change your name"
-      className="fixed inset-0 z-50 grid place-items-center bg-void/80 p-6 backdrop-blur-sm"
-      onClick={onClose}
-    >
-      <Panel className="w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+    <Overlay onClose={onClose} label="Change your name">
+      <Panel className="w-full max-w-md p-6">
         <PanelLabel className="text-p2">Your fighter name</PanelLabel>
 
         <input
@@ -96,6 +91,6 @@ export function NicknameDialog({ onClose }: { onClose: () => void }) {
           </Button>
         </div>
       </Panel>
-    </div>
+    </Overlay>
   );
 }
