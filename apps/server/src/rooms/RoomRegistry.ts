@@ -32,7 +32,10 @@ export interface LiveRoom {
   settings: RoomSettings;
   members: Map<PlayerId, RoomMemberRecord>;
   passwordHash: string | null;
-  countdown: number | null;
+  /** Absolute server time the fight begins; null unless counting down. */
+  countdownEndsAt: number | null;
+  /** Held so a countdown can be aborted if the room stops being startable. */
+  countdownTimer: ReturnType<typeof setTimeout> | null;
   /** Matchmade rooms are transient and skip the lobby entirely. */
   readonly isQuickMatch: boolean;
 }
@@ -87,7 +90,8 @@ export class RoomRegistry {
       settings: { ...DEFAULT_ROOM_SETTINGS, ...options.settings },
       members: new Map(),
       passwordHash: options.passwordHash ?? null,
-      countdown: null,
+      countdownEndsAt: null,
+      countdownTimer: null,
       isQuickMatch: options.isQuickMatch ?? false,
     };
 
@@ -205,6 +209,11 @@ export class RoomRegistry {
   }
 
   destroy(room: LiveRoom): void {
+    // A pending timer would fire against a room nobody is in and keep the
+    // object alive until it did.
+    if (room.countdownTimer) clearTimeout(room.countdownTimer);
+    room.countdownTimer = null;
+
     this.rooms.delete(room.id);
     this.byCode.delete(room.code);
     logger.debug({ roomId: room.id, code: room.code }, 'Room destroyed');
@@ -235,8 +244,25 @@ export class RoomRegistry {
       settings: { ...room.settings, hasPassword: room.passwordHash !== null },
       members,
       createdAt: room.createdAt,
-      countdown: room.countdown,
+      countdownEndsAt: room.countdownEndsAt,
     };
+  }
+
+  /**
+   * Stops a countdown and returns the room to the lobby.
+   *
+   * Called whenever the room stops being startable mid-countdown — someone
+   * leaves, disconnects, or un-readies. Starting a fight against an opponent
+   * who walked away three seconds ago would be worse than the interruption.
+   */
+  abortCountdown(room: LiveRoom): boolean {
+    if (room.phase !== 'countdown') return false;
+
+    if (room.countdownTimer) clearTimeout(room.countdownTimer);
+    room.countdownTimer = null;
+    room.countdownEndsAt = null;
+    room.phase = 'lobby';
+    return true;
   }
 
   get size(): number {

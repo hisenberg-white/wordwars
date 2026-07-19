@@ -63,6 +63,17 @@ class RoomManager {
     connection.socket?.emit('room:character', { characterId }, () => {});
   }
 
+  /** Host only; the server enforces that and rejects anyone else. */
+  update(settings: Partial<RoomSettings>): void {
+    connection.socket?.emit('room:update', { settings }, () => {});
+  }
+
+  start(): void {
+    connection.socket?.emit('room:start', (response) => {
+      if (!response.ok) this.publish({ error: response.error.code });
+    });
+  }
+
   setReady(ready: boolean): void {
     connection.socket?.emit('room:ready', { ready }, () => {});
   }

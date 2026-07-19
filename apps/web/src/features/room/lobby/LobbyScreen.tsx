@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { CharacterId, PlayerId, RoomState, ChatMessage } from '@wordwars/shared';
 import { roomManager } from '@/net/RoomManager';
 import { Button } from '@/ui/Button';
@@ -5,6 +6,7 @@ import { Panel } from '@/ui/Panel';
 import { InviteLink } from '../InviteLink';
 import { ArenaBanner } from './ArenaBanner';
 import { CharacterPicker } from './CharacterPicker';
+import { HostSettings } from './HostSettings';
 import { LobbyChat } from './LobbyChat';
 import { EmptySlot, PlayerCard } from './PlayerCard';
 
@@ -26,6 +28,8 @@ export function LobbyScreen({
   selfId: PlayerId | null;
   onLeave: () => void;
 }) {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
   const players = room.members.filter((m) => !m.isSpectator);
   const spectators = room.members.filter((m) => m.isSpectator);
 
@@ -39,6 +43,10 @@ export function LobbyScreen({
 
   return (
     <div className="w-full max-w-5xl space-y-5">
+      {settingsOpen && (
+        <HostSettings settings={room.settings} onClose={() => setSettingsOpen(false)} />
+      )}
+
       <ArenaBanner arenaId={room.settings.arenaId} />
 
       {/* The standoff */}
@@ -118,14 +126,19 @@ export function LobbyScreen({
             )}
 
             {isHost && (
-              <Button
-                variant="primary"
-                disabled
-                title="Starting a match arrives with the countdown in step 2.6"
-                className="ml-auto"
-              >
-                {everyoneReady ? 'Start Match' : 'Waiting for players'}
-              </Button>
+              <>
+                <Button variant="secondary" size="sm" onClick={() => setSettingsOpen(true)}>
+                  Settings
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={() => roomManager.start()}
+                  disabled={!everyoneReady}
+                  className="ml-auto"
+                >
+                  {everyoneReady ? 'Start Match' : 'Waiting for players'}
+                </Button>
+              </>
             )}
           </div>
         </Panel>

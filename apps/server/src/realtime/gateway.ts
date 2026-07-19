@@ -17,6 +17,7 @@ import { createRealtimeContext, type RealtimeContext } from './context.js';
 import { registerGuestHandlers } from './handlers/guest.js';
 import { registerMatchmakingHandlers } from './handlers/matchmaking.js';
 import { registerRoomHandlers } from './handlers/room.js';
+import { startCountdown } from '../rooms/countdown.js';
 import { RateLimiter, ruleFor } from './rateLimit.js';
 import { validated } from './validate.js';
 
@@ -38,6 +39,9 @@ export interface Gateway {
   readonly io: GameServer;
   readonly ctx: RealtimeContext;
 }
+
+/** How long the "opponent found" reveal holds before the count begins. */
+const QUICK_MATCH_REVEAL_MS = 1_800;
 
 export function createGateway(httpServer: HttpServer): GameServer {
   return createGatewayWithContext(httpServer).io;
@@ -101,16 +105,26 @@ export function createGatewayWithContext(httpServer: HttpServer): Gateway {
       void socket.join(room.id);
     }
 
-    const state = ctx.rooms.toState(room);
-
     socketA.emit('mm:found', { roomId: room.id, opponent: b.identity });
     socketB.emit('mm:found', { roomId: room.id, opponent: a.identity });
-    io.to(room.id).emit('room:state', state);
+    io.to(room.id).emit('room:state', ctx.rooms.toState(room));
 
     logger.info(
       { roomId: room.id, waitedMs: pairing.waitedMs, mode: pairing.mode },
       'Match paired',
     );
+
+    /*
+     * Quick match skips the lobby entirely.
+     *
+     * Both players already committed by pressing Play Now — asking them to
+     * ready up against a stranger they cannot talk to would add a step whose
+     * only possible outcome is one of them leaving. The brief delay lets the
+     * "opponent found" reveal land before the count starts.
+     */
+    setTimeout(() => {
+      if (ctx.rooms.get(room.id)) startCountdown(io, ctx.rooms, room, ctx.onMatchBegin);
+    }, QUICK_MATCH_REVEAL_MS);
   };
 
   const ctx = createRealtimeContext(onPaired);
@@ -202,7 +216,12 @@ export function createGatewayWithContext(httpServer: HttpServer): Gateway {
         const room = ctx.rooms.get(asRoomId(roomId));
         if (room) {
           const remaining = ctx.rooms.removeMember(room, socket.data.playerId);
-          if (remaining) io.to(remaining.id).emit('room:state', ctx.rooms.toState(remaining));
+          if (remaining) {
+            // Dropping out mid-count must not leave the survivor fighting a
+            // ghost when the timer fires.
+            if (!ctx.rooms.canStart(remaining)) ctx.rooms.abortCountdown(remaining);
+            io.to(remaining.id).emit('room:state', ctx.rooms.toState(remaining));
+          }
         }
       }
 

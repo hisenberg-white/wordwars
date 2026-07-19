@@ -72,6 +72,16 @@ export interface RoomState {
   readonly settings: RoomSettings;
   readonly members: readonly RoomMember[];
   readonly createdAt: number;
-  /** Populated only during 'countdown'. Seconds remaining. */
-  readonly countdown: number | null;
+  /**
+   * Absolute SERVER timestamp at which the fight begins. Null outside the
+   * countdown phase.
+   *
+   * An absolute deadline rather than "seconds remaining" on purpose. Ticking a
+   * counter down server-side would mean a broadcast every second — jittery,
+   * wasteful, and still wrong, because the number would land at slightly
+   * different moments on each screen. Sending the deadline once lets each
+   * client animate at its own refresh rate, and combined with the clock offset
+   * from `connection.serverNow()` both players see "3" at the same instant.
+   */
+  readonly countdownEndsAt: number | null;
 }

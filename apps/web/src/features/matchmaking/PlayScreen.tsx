@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { matchmaking } from '@/net/MatchmakingManager';
-import { useIdentity, useMatchmaking } from '@/net/useConnection';
+import { useIdentity, useMatchmaking, useRoom } from '@/net/useConnection';
+import { CountdownOverlay } from '@/features/room/CountdownOverlay';
 import { setAppPhase } from '@/store/appPhase';
 import { Button } from '@/ui/Button';
 import { Panel } from '@/ui/Panel';
@@ -20,6 +21,7 @@ export function PlayScreen() {
   const navigate = useNavigate();
   const { identity } = useIdentity();
   const { status, queuedAt, estimatedWaitMs, opponent, error } = useMatchmaking();
+  const { room } = useRoom();
 
   useEffect(() => {
     setAppPhase('matchmaking');
@@ -42,6 +44,10 @@ export function PlayScreen() {
   return (
     <div className="flex min-h-screen flex-col">
       <TopNav />
+
+      {/* Quick match skips the lobby: the server starts the count as soon as
+          the "opponent found" reveal has had a beat to land. */}
+      {room?.countdownEndsAt != null && <CountdownOverlay endsAt={room.countdownEndsAt} />}
 
       <main className="flex flex-1 items-center justify-center px-6 py-16">
         <Panel className="w-full max-w-2xl px-8 py-14">

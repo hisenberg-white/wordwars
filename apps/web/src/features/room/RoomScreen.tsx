@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ARENAS, type RoomState } from '@wordwars/shared';
 import { roomManager } from '@/net/RoomManager';
 import { useIdentity, useRoom } from '@/net/useConnection';
 import { setAppPhase } from '@/store/appPhase';
 import { Button } from '@/ui/Button';
 import { Panel, PanelLabel } from '@/ui/Panel';
 import { TopNav } from '@/features/landing/components/TopNav';
+import { CountdownOverlay } from './CountdownOverlay';
 import { LobbyScreen } from './lobby/LobbyScreen';
 
 /**
@@ -115,13 +117,39 @@ export function RoomScreen() {
 
   return (
     <Shell>
-      <LobbyScreen
-        room={room}
-        messages={messages}
-        selfId={identity?.playerId ?? null}
-        onLeave={leave}
-      />
+      {room.countdownEndsAt !== null && <CountdownOverlay endsAt={room.countdownEndsAt} />}
+
+      {room.phase === 'in-match' ? (
+        <MatchPending room={room} />
+      ) : (
+        <LobbyScreen
+          room={room}
+          messages={messages}
+          selfId={identity?.playerId ?? null}
+          onLeave={leave}
+        />
+      )}
     </Shell>
+  );
+}
+
+/**
+ * Placeholder for the fight itself.
+ *
+ * The countdown reaches zero and the room legitimately enters `in-match` — the
+ * server-side seam (`RealtimeContext.onMatchBegin`) is already firing. Step 3.3
+ * replaces this screen with the actual arena.
+ */
+function MatchPending({ room }: { room: RoomState }) {
+  return (
+    <Panel className="max-w-lg p-8 text-center">
+      <PanelLabel className="text-ultimate">Step 3 · Not built yet</PanelLabel>
+      <h1 className="mt-4 text-3xl">The fight would start here</h1>
+      <p className="mt-3 text-sm leading-relaxed text-ink-dim">
+        Both fighters are in, the arena is {ARENAS[room.settings.arenaId].name}, and the countdown
+        finished. The combat engine, typing input and arena render arrive in phase 3.
+      </p>
+    </Panel>
   );
 }
 

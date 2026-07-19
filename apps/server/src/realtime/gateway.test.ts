@@ -629,11 +629,15 @@ describe('gateway', () => {
      * actually care about is both correct and stable as more broadcast
      * triggers are added.
      */
-    const waitForState = (client: TestClient, predicate: (s: RoomState) => boolean) =>
+    const waitForState = (
+      client: TestClient,
+      predicate: (s: RoomState) => boolean,
+      timeoutMs = 3_000,
+    ) =>
       new Promise<RoomState>((resolve, reject) => {
         const timer = setTimeout(
           () => reject(new Error('timed out waiting for room state')),
-          3_000,
+          timeoutMs,
         );
 
         const onState = (state: RoomState) => {
@@ -781,6 +785,178 @@ describe('gateway', () => {
         expect(res.ok).toBe(false);
         if (res.ok) throw new Error('unreachable');
         expect(res.error.code).toBe('NOT_HOST');
+      });
+    });
+
+    describe('host settings', () => {
+      it('applies a settings change', async () => {
+        const { host, guest } = await roomWithTwo();
+        const seen = waitForState(guest, (s) => s.settings.arenaId === 'volcano');
+
+        const res = await host.timeout(3_000).emitWithAck('room:update', {
+          settings: { arenaId: 'volcano', roundCount: 5 },
+        });
+
+        expect(res.ok).toBe(true);
+        const state = await seen;
+        expect(state.settings.roundCount).toBe(5);
+      });
+
+      /**
+       * Ready has to mean "ready for THESE rules". Otherwise a host can ready
+       * everyone under one ruleset, silently swap it, and start.
+       */
+      it('un-readies everyone when the rules change', async () => {
+        const { host, guest } = await roomWithTwo();
+
+        const bothReady = waitForState(host, (s) => s.members.every((m) => m.isReady));
+        await host.timeout(3_000).emitWithAck('room:ready', { ready: true });
+        await guest.timeout(3_000).emitWithAck('room:ready', { ready: true });
+        await bothReady;
+
+        // Annotated because emitWithAck does not carry our Ack<T> through.
+        const res: Ack<RoomState> = await host.timeout(3_000).emitWithAck('room:update', {
+          settings: { roundCount: 5 },
+        });
+
+        expect(res.ok).toBe(true);
+        if (!res.ok) throw new Error('unreachable');
+        expect(res.data.members.every((m) => !m.isReady)).toBe(true);
+      });
+
+      it('refuses a non-host', async () => {
+        const { guest } = await roomWithTwo();
+
+        const res = await guest.timeout(3_000).emitWithAck('room:update', {
+          settings: { arenaId: 'volcano' },
+        });
+
+        expect(res.ok).toBe(false);
+        if (res.ok) throw new Error('unreachable');
+        expect(res.error.code).toBe('NOT_HOST');
+      });
+    });
+
+    describe('countdown', () => {
+      async function readyRoom() {
+        const { host, guest } = await roomWithTwo();
+        const bothReady = waitForState(host, (s) => s.members.every((m) => m.isReady));
+        await host.timeout(3_000).emitWithAck('room:ready', { ready: true });
+        await guest.timeout(3_000).emitWithAck('room:ready', { ready: true });
+        await bothReady;
+        return { host, guest };
+      }
+
+      it('starts with an absolute deadline rather than a tick count', async () => {
+        const { host, guest } = await readyRoom();
+        const counting = waitForState(guest, (s) => s.phase === 'countdown');
+
+        const res = await host.timeout(3_000).emitWithAck('room:start');
+        expect(res.ok).toBe(true);
+
+        const state = await counting;
+        expect(state.countdownEndsAt).toBeGreaterThan(Date.now());
+        // Roughly three seconds out — the client derives every frame from this.
+        expect(state.countdownEndsAt! - Date.now()).toBeLessThanOrEqual(3_000);
+      });
+
+      it('refuses to start when a player is not ready', async () => {
+        const { host } = await roomWithTwo();
+        await host.timeout(3_000).emitWithAck('room:ready', { ready: true });
+
+        const res = await host.timeout(3_000).emitWithAck('room:start');
+
+        expect(res.ok).toBe(false);
+        if (res.ok) throw new Error('unreachable');
+        expect(res.error.code).toBe('PLAYERS_NOT_READY');
+      });
+
+      it('refuses to start with only one player', async () => {
+        const host = await identified('Lonely');
+        const created = await host
+          .timeout(3_000)
+          .emitWithAck('room:create', { settings: SETTINGS });
+        if (!created.ok) throw new Error('create failed');
+
+        await host.timeout(3_000).emitWithAck('room:ready', { ready: true });
+        const res = await host.timeout(3_000).emitWithAck('room:start');
+
+        expect(res.ok).toBe(false);
+        if (res.ok) throw new Error('unreachable');
+        expect(res.error.code).toBe('NOT_ENOUGH_PLAYERS');
+      });
+
+      it('refuses a non-host', async () => {
+        const { guest } = await readyRoom();
+        const res = await guest.timeout(3_000).emitWithAck('room:start');
+
+        expect(res.ok).toBe(false);
+        if (res.ok) throw new Error('unreachable');
+        expect(res.error.code).toBe('NOT_HOST');
+      });
+
+      /** "Wait, no" has to work — a running timer is not a commitment. */
+      it('aborts when a player un-readies mid-count', async () => {
+        const { host, guest } = await readyRoom();
+
+        const counting = waitForState(guest, (s) => s.phase === 'countdown');
+        await host.timeout(3_000).emitWithAck('room:start');
+        await counting;
+
+        const aborted = waitForState(host, (s) => s.phase === 'lobby');
+        await guest.timeout(3_000).emitWithAck('room:ready', { ready: false });
+
+        const state = await aborted;
+        expect(state.countdownEndsAt).toBeNull();
+      });
+
+      /**
+       * The one that matters most: without this the timer still fires and the
+       * survivor is dropped into a fight against nobody.
+       */
+      it('aborts when a player leaves mid-count', async () => {
+        const { host, guest } = await readyRoom();
+
+        const counting = waitForState(host, (s) => s.phase === 'countdown');
+        await host.timeout(3_000).emitWithAck('room:start');
+        await counting;
+
+        const aborted = waitForState(host, (s) => s.phase === 'lobby');
+        await guest.timeout(3_000).emitWithAck('room:leave');
+
+        const state = await aborted;
+        expect(state.countdownEndsAt).toBeNull();
+        expect(state.members).toHaveLength(1);
+      });
+
+      it('reaches the match once the count completes', async () => {
+        const { host, guest } = await readyRoom();
+
+        const inMatch = waitForState(guest, (s) => s.phase === 'in-match', 6_000);
+        await host.timeout(3_000).emitWithAck('room:start');
+
+        const state = await inMatch;
+        expect(state.countdownEndsAt).toBeNull();
+      });
+
+      it('resolves a random arena before the count, so both see the same stage', async () => {
+        const { host, guest } = await roomWithTwo();
+
+        await host.timeout(3_000).emitWithAck('room:update', {
+          settings: { randomArena: true },
+        });
+
+        const bothReady = waitForState(host, (s) => s.members.every((m) => m.isReady));
+        await host.timeout(3_000).emitWithAck('room:ready', { ready: true });
+        await guest.timeout(3_000).emitWithAck('room:ready', { ready: true });
+        await bothReady;
+
+        const hostSees = waitForState(host, (s) => s.phase === 'countdown');
+        const guestSees = waitForState(guest, (s) => s.phase === 'countdown');
+        await host.timeout(3_000).emitWithAck('room:start');
+
+        const [a, b] = await Promise.all([hostSees, guestSees]);
+        expect(a.settings.arenaId).toBe(b.settings.arenaId);
       });
     });
 

@@ -13,7 +13,12 @@ picked up cold and executed without re-deriving decisions.
 > **Any new session: start here.** Work the first unchecked box in the current
 > phase. Tick boxes as they land. Do not rebuild anything already ticked.
 
-**Current phase: Phase 2 — Getting Two Humans Into A Fight** (Phase 1 complete)
+**Current phase: Phase 3 — The Game** (Phases 1 and 2 complete)
+
+> Phase 3 is the point of the whole project. Everything so far exists to deliver
+> two players into a countdown; 3.1–3.11 is the fight. Re-read §0 (The One Rule)
+> and §5 (Combat Design) before starting 3.1 — the numbers there are the design,
+> not placeholders.
 
 Quick start:
 
@@ -283,7 +288,44 @@ compile-verified and test-verified but never actually looked at.
       → 123 tests. Live-verified 9 checks with three clients: create, join
       announcement, character broadcast, both-ready, verbatim chat, spectator
       seating, spectator ready ignored, non-host kick refused, host kick works.
-- [ ] 2.6 Host settings panel + 3-2-1-FIGHT countdown
+- [x] 2.6 Host settings panel + 3-2-1-FIGHT countdown
+      → **CONTRACT CHANGE: `RoomState.countdown` → `countdownEndsAt` (absolute server
+      timestamp).** Ticking a counter server-side would mean a broadcast per second
+      — jittery, wasteful, and still WRONG, because the number would land at
+      different moments on each screen. Sending the deadline once and animating
+      client-side against `connection.serverNow()` (the clock offset from 1.5) means
+      both players see "3" at the same instant. Server broadcasts exactly twice:
+      countdown start, and match begin.
+      → `CountdownOverlay` animates on rAF, scaling each number down as its second
+      elapses so it lands with impact rather than appearing like a clock.
+      → **Countdown aborts whenever the room stops being startable** — un-ready,
+      leave, or disconnect. Without this the timer still fires and the survivor is
+      dropped into a fight against nobody. Three tests + a live check that no ghost
+      `in-match` transition follows an abort.
+      → **Changing settings un-readies everyone.** Otherwise a host readies the room
+      under one ruleset, silently swaps it, and starts — "ready" has to mean "ready
+      for THESE rules".
+      → Random arena is resolved BEFORE the count, so both clients are told the same
+      stage rather than each rolling their own.
+      → **Quick match skips the lobby entirely** — server auto-starts the countdown
+      1.8s after pairing (enough for the opponent reveal to land). Both players
+      already committed by pressing Play Now; a ready-up against a stranger they
+      can't talk to only invites someone to leave.
+      → **TYPE BUG CAUGHT BY typecheck:** spreading a Zod `.partial()` patch would let
+      a key present-but-undefined blank a real setting (arena, round count). Fixed
+      with `definedOnly` + a `DefinedPartial<T>` mapped type — `Partial<T>` is NOT
+      enough under `exactOptionalPropertyTypes`, since its values keep `| undefined`.
+      → `RealtimeContext.onMatchBegin` is **the seam Phase 3 plugs into** — fires the
+      instant the count hits zero. 3.3 replaces the no-op with MatchEngine
+      construction. Nothing before it needs to change.
+      → 134 tests. Live-verified 11 checks: settings broadcast, partial update
+      preserving other fields, un-ready on rules change, absolute deadline
+      (2999ms out), match begins at 3019ms, abort on leave, no ghost match,
+      quick-match auto-countdown reaching the fight.
+
+**→ PHASE 2 COMPLETE. Next session starts at 3.1 (`packages/engine`).**
+Two humans can now go from the landing page to the start of a fight, by
+matchmaking or by invite link. Phase 3 builds the fight itself.
 
 ### Phase 3 — The Game
 

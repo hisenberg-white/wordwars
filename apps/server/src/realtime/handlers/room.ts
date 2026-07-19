@@ -11,6 +11,7 @@ import {
   roomKickSchema,
   roomReadySchema,
   roomSelectCharacterSchema,
+  roomUpdateSchema,
   type ChatMessage,
   type CharacterId,
   type RoomState,
@@ -18,6 +19,7 @@ import {
 import { logger } from '../../logger.js';
 import { hashPassword, verifyPassword } from '../../services/password.js';
 import type { LiveRoom } from '../../rooms/RoomRegistry.js';
+import { startCountdown } from '../../rooms/countdown.js';
 import type { RealtimeContext } from '../context.js';
 import type { GameServer, GameSocket } from '../gateway.js';
 import { validated } from '../validate.js';
@@ -56,7 +58,14 @@ export function registerRoomHandlers(
     if (!room) return;
 
     const remaining = ctx.rooms.removeMember(room, socket.data.playerId);
-    if (remaining) broadcast(remaining);
+    if (!remaining) return;
+
+    // Losing a player mid-count means there is no longer a fight to start.
+    if (!ctx.rooms.canStart(remaining) && ctx.rooms.abortCountdown(remaining)) {
+      systemMessage(io, remaining, 'Countdown stopped — a player left');
+    }
+
+    broadcast(remaining);
   };
 
   socket.on(
@@ -198,6 +207,17 @@ export function registerRoomHandlers(
       }
 
       const changed = ctx.rooms.setReady(room, socket.data.playerId, payload.ready);
+
+      // Un-readying during the count is a legitimate "wait, no" and must stop
+      // the fight rather than being ignored because a timer is running.
+      if (!payload.ready && ctx.rooms.abortCountdown(room)) {
+        systemMessage(
+          io,
+          room,
+          `${socket.data.identity.nickname} is not ready — countdown stopped`,
+        );
+      }
+
       ack(ackOk(changed ? broadcast(room) : ctx.rooms.toState(room)));
     }),
   );
@@ -227,6 +247,84 @@ export function registerRoomHandlers(
       ack(ackOk(undefined));
     }),
   );
+
+  socket.on(
+    'room:update',
+    validated(roomUpdateSchema, async (payload, ack) => {
+      const room = currentRoom();
+      if (!room) {
+        ack(ackError('NOT_IN_MATCH', 'You are not in a room'));
+        return;
+      }
+
+      if (room.hostId !== socket.data.playerId) {
+        ack(ackError('NOT_HOST'));
+        return;
+      }
+
+      if (room.phase !== 'lobby') {
+        ack(ackError('ROOM_IN_PROGRESS'));
+        return;
+      }
+
+      // `definedOnly` is not ceremony: a plain spread would let a key present
+      // with an `undefined` value overwrite a real setting with nothing,
+      // silently blanking the arena or round count. Only keys the host
+      // actually sent should apply.
+      room.settings = { ...room.settings, ...definedOnly(payload.settings) };
+
+      if (payload.password !== undefined) {
+        room.passwordHash = payload.password ? await hashPassword(payload.password) : null;
+      }
+
+      /*
+       * Changing the rules un-readies everyone.
+       *
+       * A player readied up for a best-of-three with Ultimates on. If the host
+       * can flip that to best-of-five with Ultimates off and start immediately,
+       * "ready" stopped meaning anything. Fighting games make you re-confirm
+       * for exactly this reason.
+       */
+      for (const member of room.members.values()) member.isReady = false;
+
+      systemMessage(io, room, 'Host changed the room settings');
+      ack(ackOk(broadcast(room)));
+    }),
+  );
+
+  socket.on('room:start', (ack) => {
+    const respond = typeof ack === 'function' ? ack : () => {};
+    const room = currentRoom();
+
+    if (!room) {
+      respond(ackError('NOT_IN_MATCH', 'You are not in a room'));
+      return;
+    }
+
+    if (room.hostId !== socket.data.playerId) {
+      respond(ackError('NOT_HOST'));
+      return;
+    }
+
+    if (room.phase !== 'lobby') {
+      respond(ackError('ROOM_IN_PROGRESS'));
+      return;
+    }
+
+    const players = [...room.members.values()].filter((m) => !m.isSpectator);
+    if (players.length < 2) {
+      respond(ackError('NOT_ENOUGH_PLAYERS'));
+      return;
+    }
+
+    if (!ctx.rooms.canStart(room)) {
+      respond(ackError('PLAYERS_NOT_READY'));
+      return;
+    }
+
+    startCountdown(io, ctx.rooms, room, ctx.onMatchBegin);
+    respond(ackOk(undefined));
+  });
 
   socket.on(
     'room:kick',
@@ -268,6 +366,27 @@ export function registerRoomHandlers(
       ack(ackOk(broadcast(remaining)));
     }),
   );
+}
+
+/**
+ * Every key optional, and `undefined` removed from every value type.
+ *
+ * `Partial<T>` is not enough: under `exactOptionalPropertyTypes` its values
+ * still include `| undefined`, so spreading one over a fully-populated object
+ * widens each field to possibly-undefined. This mapped type expresses what
+ * `definedOnly` actually guarantees at runtime.
+ */
+type DefinedPartial<T> = { [K in keyof T]?: Exclude<T[K], undefined> };
+
+/** Drops keys whose value is `undefined`, so a patch cannot blank a setting. */
+function definedOnly<T extends object>(patch: T): DefinedPartial<T> {
+  const result: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(patch)) {
+    if (value !== undefined) result[key] = value;
+  }
+
+  return result as DefinedPartial<T>;
 }
 
 function systemMessage(io: GameServer, room: LiveRoom, text: string): void {
