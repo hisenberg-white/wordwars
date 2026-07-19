@@ -3,8 +3,9 @@ import { env, isDevelopment } from './config/env.js';
 import { logger } from './logger.js';
 import { createApp } from './http/app.js';
 import { createMemoryRepositories } from './db/memory.js';
-import { createGateway } from './realtime/gateway.js';
+import { createGatewayWithContext } from './realtime/gateway.js';
 import { LeaderboardService } from './services/leaderboardService.js';
+import { OnlineRegistry } from './realtime/onlineRegistry.js';
 
 /*
  * Persistence.
@@ -22,9 +23,17 @@ const repositories = createMemoryRepositories();
 const leaderboards = new LeaderboardService(repositories);
 leaderboards.start(env.LEADERBOARD_REBUILD_MS);
 
-const app = createApp(repositories, leaderboards);
+/*
+ * ONE presence registry, shared by HTTP and sockets.
+ *
+ * Two registries would disagree about who is online, and the friends list
+ * would contradict the challenge button sitting next to it.
+ */
+const online = new OnlineRegistry();
+
+const app = createApp(repositories, leaderboards, online);
 const httpServer = createServer(app);
-const io = createGateway(httpServer, repositories);
+const io = createGatewayWithContext(httpServer, repositories, online).io;
 
 httpServer.listen(env.PORT, env.HOST, () => {
   logger.info(

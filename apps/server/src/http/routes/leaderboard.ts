@@ -7,6 +7,9 @@ import {
   type LeaderboardScope,
 } from '../../services/leaderboard.js';
 import type { LeaderboardService } from '../../services/leaderboardService.js';
+import { AuthService } from '../../services/auth.js';
+import { FriendService } from '../../services/friends.js';
+import type { Repositories } from '../../db/repositories.js';
 
 /**
  * Public leaderboards.
@@ -27,10 +30,21 @@ const querySchema = z.object({
     .string()
     .regex(/^[A-Za-z]{2}$/)
     .optional(),
+  scope: z.enum(['global', 'friends']).optional(),
 });
 
-export function createLeaderboardRouter(leaderboards: LeaderboardService): Router {
+export function createLeaderboardRouter(
+  leaderboards: LeaderboardService,
+  repos?: Repositories,
+): Router {
   const router = Router();
+  const auth = repos ? new AuthService(repos) : null;
+  const friends = repos ? new FriendService(repos) : null;
+
+  const authFor = async (header: string | undefined) => {
+    if (!auth || !header?.startsWith('Bearer ')) return null;
+    return auth.authenticate(header.slice('Bearer '.length).trim());
+  };
 
   /** The catalogue, so the client renders tabs without hardcoding them. */
   router.get('/categories', (_req, res) => {
@@ -58,6 +72,25 @@ export function createLeaderboardRouter(leaderboards: LeaderboardService): Route
 
       if (!category || !isPeriod(period)) {
         res.status(404).json({ error: { code: 'NO_SUCH_BOARD' } });
+        return;
+      }
+
+      /*
+       * A friends board needs to know WHO is asking, so it is the one scope
+       * that requires a token. Everything else stays public.
+       */
+      if (parsed.data.scope === 'friends' && friends) {
+        const user = await authFor(req.headers.authorization);
+        if (!user) {
+          res.status(401).json({ error: { code: 'UNAUTHENTICATED' } });
+          return;
+        }
+
+        // Including yourself: a board of only other people is a strange thing
+        // to show someone, and the comparison is the entire point.
+        const ids = [...(await friends.friendIds(user.id)), user.id];
+        res.set('Cache-Control', 'private, max-age=30');
+        res.json(await leaderboards.readFriends(ids, category.id, period));
         return;
       }
 

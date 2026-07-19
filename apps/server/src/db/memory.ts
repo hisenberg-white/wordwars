@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { asUserId, type PlayerId, type UserId } from '@wordwars/shared';
 import type {
   AchievementRepository,
+  FriendRepository,
+  FriendshipRecord,
   LeaderboardRepository,
   StoredAchievement,
   StoredLeaderboard,
@@ -127,8 +129,16 @@ class MemoryMatchRepository implements MatchRepository {
     return this.matches.filter((m) => m.startedAt >= from);
   }
 
-  async recentForUser(userId: UserId, limit: number): Promise<MatchRecord[]> {
-    return this.matches.filter((m) => m.players.some((p) => p.userId === userId)).slice(0, limit);
+  async recentForUser(userId: UserId, limit: number, offset = 0): Promise<MatchRecord[]> {
+    return this.mine(userId).slice(offset, offset + limit);
+  }
+
+  async countForUser(userId: UserId): Promise<number> {
+    return this.mine(userId).length;
+  }
+
+  private mine(userId: UserId): MatchRecord[] {
+    return this.matches.filter((m) => m.players.some((p) => p.userId === userId));
   }
 
   async claimForUser(playerId: PlayerId, userId: UserId): Promise<number> {
@@ -180,6 +190,29 @@ class MemoryLeaderboardRepository implements LeaderboardRepository {
   }
 }
 
+class MemoryFriendRepository implements FriendRepository {
+  /** userId → friendId → row. Mirrors the indexed lookup Postgres will do. */
+  private readonly byUser = new Map<UserId, Map<UserId, FriendshipRecord>>();
+
+  async forUser(userId: UserId): Promise<FriendshipRecord[]> {
+    return [...(this.byUser.get(userId)?.values() ?? [])];
+  }
+
+  async find(userId: UserId, friendId: UserId): Promise<FriendshipRecord | null> {
+    return this.byUser.get(userId)?.get(friendId) ?? null;
+  }
+
+  async put(record: FriendshipRecord): Promise<void> {
+    const rows = this.byUser.get(record.userId) ?? new Map<UserId, FriendshipRecord>();
+    rows.set(record.friendId, record);
+    this.byUser.set(record.userId, rows);
+  }
+
+  async remove(userId: UserId, friendId: UserId): Promise<void> {
+    this.byUser.get(userId)?.delete(friendId);
+  }
+}
+
 export function createMemoryRepositories(): Repositories {
   return {
     users: new MemoryUserRepository(),
@@ -187,6 +220,7 @@ export function createMemoryRepositories(): Repositories {
     matches: new MemoryMatchRepository(),
     achievements: new MemoryAchievementRepository(),
     leaderboards: new MemoryLeaderboardRepository(),
+    friends: new MemoryFriendRepository(),
   };
 }
 

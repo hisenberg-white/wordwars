@@ -92,8 +92,10 @@ export interface MatchOutcomeForStats {
 
 export interface MatchRepository {
   record(match: MatchRecord): Promise<void>;
-  /** Most recent matches for a user, newest first. */
-  recentForUser(userId: UserId, limit: number): Promise<MatchRecord[]>;
+  /** Most recent matches for a user, newest first. `offset` pages backwards. */
+  recentForUser(userId: UserId, limit: number, offset?: number): Promise<MatchRecord[]>;
+  /** Total matches on record for a user, so a history page can show its size. */
+  countForUser(userId: UserId): Promise<number>;
   /**
    * Reassigns a guest's past matches to a newly created account.
    *
@@ -110,6 +112,32 @@ export interface MatchRepository {
    * point of materialising is that nobody waits on it.
    */
   since(from: number): Promise<MatchRecord[]>;
+}
+
+/**
+ * One direction of a friendship.
+ *
+ * Directed rows rather than one shared row: "who are my friends" is the query
+ * this system answers a hundred times more often than any other, and a directed
+ * row makes it a single indexed lookup instead of an OR across two columns.
+ * Accepting a request writes the mirror row, so an accepted friendship is
+ * always two rows and always symmetric.
+ */
+export interface FriendshipRecord {
+  readonly userId: UserId;
+  readonly friendId: UserId;
+  readonly status: 'pending' | 'accepted' | 'blocked';
+  /** True on the row belonging to whoever sent the request. */
+  readonly outgoing: boolean;
+  readonly createdAt: number;
+}
+
+export interface FriendRepository {
+  /** Every row owned by this user, in any status. */
+  forUser(userId: UserId): Promise<FriendshipRecord[]>;
+  find(userId: UserId, friendId: UserId): Promise<FriendshipRecord | null>;
+  put(record: FriendshipRecord): Promise<void>;
+  remove(userId: UserId, friendId: UserId): Promise<void>;
 }
 
 export interface StoredLeaderboard {
@@ -147,4 +175,5 @@ export interface Repositories {
   readonly matches: MatchRepository;
   readonly achievements: AchievementRepository;
   readonly leaderboards: LeaderboardRepository;
+  readonly friends: FriendRepository;
 }

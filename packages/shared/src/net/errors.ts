@@ -20,6 +20,10 @@ export const SOCKET_ERROR_CODES = [
   'MATCH_NOT_FOUND',
   'NOT_IN_MATCH',
   'NICKNAME_TAKEN',
+  /** The action is not permitted between these two players (e.g. not friends). */
+  'FORBIDDEN',
+  /** The target exists but cannot be reached right now — they went offline. */
+  'UNAVAILABLE',
   'INTERNAL',
 ] as const;
 

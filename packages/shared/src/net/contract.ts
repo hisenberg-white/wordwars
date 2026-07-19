@@ -14,6 +14,7 @@ import type { Ack, SocketError } from './errors.js';
 import type {
   GuestInitPayload,
   MatchHeartbeatPayload,
+  FriendChallengePayload,
   MatchWordPayload,
   MatchmakingJoinPayload,
   RoomChatPayload,
@@ -55,6 +56,18 @@ export interface ClientToServerEvents {
     p: MatchHeartbeatPayload,
     ack: (r: Ack<{ serverTime: number }>) => void,
   ) => void;
+  /**
+   * Challenges a friend to a private match.
+   *
+   * The whole reason a friends list exists in a fighting game. The server
+   * creates the room and pushes an invite to every tab the friend has open —
+   * asking them to copy a code out of a chat window would be a worse product.
+   */
+  'friend:challenge': (
+    p: FriendChallengePayload,
+    ack: (r: Ack<{ roomId: string; code: string }>) => void,
+  ) => void;
+
   'match:rematch': (ack: (r: Ack) => void) => void;
   'match:forfeit': (ack: (r: Ack) => void) => void;
 }
@@ -75,6 +88,14 @@ export interface ServerToClientEvents {
   'match:events': (p: MatchEventBatch) => void;
   'match:state': (p: MatchSnapshot) => void;
   'match:end': (p: MatchResult) => void;
+
+  /** A friend wants to fight. Carries the code so accepting is one click. */
+  'friend:challenged': (p: {
+    from: PlayerIdentity;
+    roomId: string;
+    code: string;
+    expiresAt: number;
+  }) => void;
 
   /** A player dropped; the match is paused pending their return (plan §7.3). */
   'match:paused': (p: { playerId: PlayerId; nickname: string; resumeDeadline: number }) => void;

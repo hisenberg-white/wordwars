@@ -11,6 +11,8 @@ import { RoomEntryScreen } from '@/features/room/RoomEntryScreen';
 import { RoomScreen } from '@/features/room/RoomScreen';
 import { ProfileScreen } from '@/features/profile/ProfileScreen';
 import { LeaderboardScreen } from '@/features/leaderboard/LeaderboardScreen';
+import { FriendsScreen } from '@/features/friends/FriendsScreen';
+import { ChallengeToast } from '@/features/friends/ChallengeToast';
 import { PENDING_ROUTES } from './routes';
 
 export function App() {
@@ -44,12 +46,17 @@ export function App() {
           <Route path="/room/:code" element={<RoomScreen />} />
           <Route path="/profile" element={<ProfileScreen />} />
           <Route path="/leaderboard" element={<LeaderboardScreen />} />
+          <Route path="/friends" element={<FriendsScreen />} />
           {PENDING_ROUTES.map(({ path, element }) => (
             <Route key={path} path={path} element={element} />
           ))}
           <Route path="*" element={<NotFoundScreen />} />
         </Routes>
       </div>
+
+      {/* App-wide: a challenge is worthless if it only arrives when you happen
+          to be looking at the friends screen. */}
+      <ChallengeToast />
     </>
   );
 }

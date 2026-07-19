@@ -13,7 +13,7 @@ picked up cold and executed without re-deriving decisions.
 > **Any new session: start here.** Work the first unchecked box in the current
 > phase. Tick boxes as they land. Do not rebuild anything already ticked.
 
-**Current phase: Phase 4 — Accounts & Meta.** 4.1–4.4 complete. Next: 4.5 Friends + match history.
+**Current phase: Phase 5 — Production Polish.** Phase 4 COMPLETE (4.1–4.5).
 
 > Phase 3 is done bar the SUBJECTIVE half of the 3.11 gate: the balance numbers
 > are proven by simulation, but **nobody has actually played this yet.** That
@@ -903,7 +903,45 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
       malformed input rejected.
       → DEFERRED with reasons: friends boards need friends (4.5); season boards
       need a Season entity, which is Phase 5 — inventing one now is scope creep.
-- [ ] 4.5 Friends + match history
+- [x] 4.5 Friends + match history
+      → **A friends list in a fighting game exists to START A FIGHT.** Not to
+      collect names. So the server sorts the list by who you can actually play
+      right now — incoming requests first (the only rows needing a decision),
+      then idle friends, then mid-match, then offline — and the primary action
+      on a row is Challenge.
+      → `friend:challenge` creates the private room and PUSHES an invite to
+      every tab the friend has open. Asking players to copy a code into a chat
+      window would have been the lazy half of this feature. The toast is
+      app-wide: a challenge that only arrives when you happen to be on the
+      friends screen is worthless.
+      → Friendship is verified SERVER-side before a challenge is created —
+      otherwise the event is an open channel to push a popup at any account id
+      in the system, a spam vector wearing a feature's clothes.
+      → **Safety is not an extra.** A block is invisible to the person blocked
+      (their request appears to send and goes nowhere) — reporting "you are
+      blocked" confirms the target is reachable and invites another account.
+      The outgoing-request cap falls on the SENDER, so a popular player is never
+      the one punished.
+      → BUG CAUGHT BY TEST: the duplicate guard ran BEFORE the mutual-request
+      check, so when two people requested each other the second was rejected as
+      "already sent" and the friendship never completed. The incoming row IS a
+      pending row — order matters.
+      → Presence is one `OnlineRegistry` shared by HTTP and sockets; two would
+      disagree and the list would contradict the button beside it. Keyed by
+      userId holding a SET of sockets, or closing one tab marks you offline.
+      → Friends leaderboard scope (deferred from 4.4) ranks from the stored
+      per-player AGGREGATE table, not one materialised board per user. Still not
+      a live query — it never touches a match row.
+      → Paged match history at `/api/profile/history`, separate from `/me`,
+      which stays small so a profile loads fast.
+      → Security: the aggregate snapshot stores only display fields. Serialising
+      whole user records would have written PASSWORD HASHES into a cache built
+      to be read widely.
+      → 295 server tests. **Live-verified 25 checks**: request/accept by
+      username, symmetry, duplicate + self + unknown rejection, mutual
+      auto-accept, live presence going online and offline, a real challenge
+      delivered socket-to-socket with a joinable code, a NON-friend refused, an
+      undetectable block, paged history, and the friends leaderboard scope.
 
 ### Phase 5 — Production Polish
 

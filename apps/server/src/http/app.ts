@@ -7,6 +7,8 @@ import { healthRouter } from './routes/health.js';
 import { createAuthRouter } from './routes/auth.js';
 import { createProfileRouter } from './routes/profile.js';
 import { createLeaderboardRouter } from './routes/leaderboard.js';
+import { createFriendsRouter } from './routes/friends.js';
+import { OFFLINE_PRESENCE, type PresenceLookup } from '../services/friends.js';
 import { LeaderboardService } from '../services/leaderboardService.js';
 import type { Repositories } from '../db/repositories.js';
 
@@ -25,6 +27,12 @@ export function createApp(
    * silently owned an unstarted timer would serve permanently empty boards.
    */
   leaderboards: LeaderboardService = new LeaderboardService(repos),
+  /*
+   * The SAME registry the socket gateway writes to, so the friends list and the
+   * challenge button never disagree about who is online. Defaults to
+   * always-offline for tests that build an app without a gateway.
+   */
+  presence: PresenceLookup = OFFLINE_PRESENCE,
 ): Express {
   const app = express();
 
@@ -55,7 +63,8 @@ export function createApp(
   app.use('/health', healthRouter);
   app.use('/api/auth', createAuthRouter(repos));
   app.use('/api/profile', createProfileRouter(repos));
-  app.use('/api/leaderboard', createLeaderboardRouter(leaderboards));
+  app.use('/api/leaderboard', createLeaderboardRouter(leaderboards, repos));
+  app.use('/api/friends', createFriendsRouter(repos, presence));
 
   app.use((_req: Request, res: Response) => {
     res.status(404).json({ error: { code: 'NOT_FOUND' } });

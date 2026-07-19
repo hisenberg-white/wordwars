@@ -91,6 +91,11 @@ export const roomKickSchema = z.object({
   playerId: z.string().min(1).max(64),
 });
 
+/** Challenges a friend, addressed by account id rather than socket. */
+export const friendChallengeSchema = z.object({
+  userId: z.string().min(1).max(64),
+});
+
 /**
  * A committed word. The heart of the protocol.
  *
@@ -122,5 +127,6 @@ export type RoomSelectCharacterPayload = z.infer<typeof roomSelectCharacterSchem
 export type RoomReadyPayload = z.infer<typeof roomReadySchema>;
 export type RoomChatPayload = z.infer<typeof roomChatSchema>;
 export type RoomKickPayload = z.infer<typeof roomKickSchema>;
+export type FriendChallengePayload = z.infer<typeof friendChallengeSchema>;
 export type MatchWordPayload = z.infer<typeof matchWordSchema>;
 export type MatchHeartbeatPayload = z.infer<typeof matchHeartbeatSchema>;

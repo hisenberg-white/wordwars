@@ -33,6 +33,14 @@ export function registerGuestHandlers(
   socket: GameSocket,
   reattach: (socket: GameSocket) => void = () => {},
   auth?: AuthService,
+  /**
+   * Fires once the socket's account (if any) is known.
+   *
+   * Presence cannot be recorded at connection time: a socket arrives anonymous
+   * and only learns which account it belongs to here. Registering earlier would
+   * mark every account offline forever.
+   */
+  onIdentified: (socket: GameSocket) => void = () => {},
 ): void {
   const log = logger.child({ socketId: socket.id });
 
@@ -107,6 +115,8 @@ export function registerGuestHandlers(
        * guest sessions stateless and signed back in 2.2 — without it a dropped
        * player would have no way to prove who they were.
        */
+      onIdentified(socket);
+
       if (restored) reattach(socket);
     }),
   );

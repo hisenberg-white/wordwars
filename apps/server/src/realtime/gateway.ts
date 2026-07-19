@@ -14,6 +14,8 @@ import { corsOrigins } from '../config/env.js';
 import { logger } from '../logger.js';
 import type { Pairing } from '../matchmaking/MatchmakingService.js';
 import { createRealtimeContext, type RealtimeContext } from './context.js';
+import { OnlineRegistry } from './onlineRegistry.js';
+import { registerFriendHandlers } from './handlers/friends.js';
 import { registerGuestHandlers } from './handlers/guest.js';
 import { registerMatchHandlers } from './handlers/match.js';
 import { registerMatchmakingHandlers } from './handlers/matchmaking.js';
@@ -42,6 +44,8 @@ export type GameSocket = Socket<
 export interface Gateway {
   readonly io: GameServer;
   readonly ctx: RealtimeContext;
+  /** Exposed so the REST layer can report friend presence from the same source. */
+  readonly online: OnlineRegistry;
 }
 
 /** How long the "opponent found" reveal holds before the count begins. */
@@ -51,7 +55,16 @@ export function createGateway(httpServer: HttpServer, repos: Repositories): Game
   return createGatewayWithContext(httpServer, repos).io;
 }
 
-export function createGatewayWithContext(httpServer: HttpServer, repos: Repositories): Gateway {
+export function createGatewayWithContext(
+  httpServer: HttpServer,
+  repos: Repositories,
+  /*
+   * Passed in rather than constructed here so the HTTP layer and the socket
+   * layer share ONE registry. Two registries would disagree about who is
+   * online, and the friends list would contradict the challenge button.
+   */
+  online: OnlineRegistry = new OnlineRegistry(),
+): Gateway {
   const io: GameServer = new Server(httpServer, {
     // WebSocket only. Long-polling fallback degrades combat feel past the point
     // of being worth supporting (plan §7) — a player on polling would rather
@@ -181,7 +194,13 @@ export function createGatewayWithContext(httpServer: HttpServer, repos: Reposito
 
     // The reattach hook fires once a restored token proves this socket
     // belongs to a match already in progress.
-    registerGuestHandlers(socket, (s) => handleReconnect(io, ctx, s), ctx.auth);
+    registerGuestHandlers(
+      socket,
+      (s) => handleReconnect(io, ctx, s),
+      ctx.auth,
+      (s) => online.add(s),
+    );
+    registerFriendHandlers(socket, ctx, online);
     registerMatchmakingHandlers(socket, ctx);
     registerRoomHandlers(socket, ctx, io);
     registerMatchHandlers(socket, ctx, io);
@@ -219,6 +238,8 @@ export function createGatewayWithContext(httpServer: HttpServer, repos: Reposito
     socket.on('disconnect', (reason) => {
       log.info({ reason }, 'Socket disconnected');
 
+      online.remove(socket);
+
       // A queued player who closes the tab must not be paired with someone who
       // will then wait for a ghost.
       ctx.matchmaking.leave(socket.data.playerId);
@@ -254,7 +275,7 @@ export function createGatewayWithContext(httpServer: HttpServer, repos: Reposito
     });
   });
 
-  return { io, ctx };
+  return { io, ctx, online };
 }
 
 /** Finds a connected socket by player id. */

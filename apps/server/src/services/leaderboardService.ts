@@ -10,6 +10,7 @@ import {
   rank,
   type Leaderboard,
   type LeaderboardCategoryId,
+  type PlayerAggregate,
   type LeaderboardPeriod,
   type LeaderboardScope,
 } from './leaderboard.js';
@@ -28,6 +29,11 @@ const BOARD_SIZE = 100;
 
 const DEFAULT_INTERVAL_MS = 5 * 60_000;
 
+/** Where the per-player aggregate table for a period is stored. */
+export function aggregateKey(period: LeaderboardPeriod): string {
+  return `aggregates:${period}`;
+}
+
 export function boardKey(
   category: LeaderboardCategoryId,
   period: LeaderboardPeriod,
@@ -35,6 +41,21 @@ export function boardKey(
 ): string {
   return `${category}:${period}:${scope.kind === 'global' ? 'global' : `country:${scope.code}`}`;
 }
+
+/**
+ * The only user fields a board row displays.
+ *
+ * Deliberately narrow: what gets stored in a cache should be what gets shown,
+ * not whatever the record happened to contain.
+ */
+type BoardUser = Pick<UserRecord, 'id' | 'username' | 'countryCode' | 'level'>;
+
+const displayFields = (user: UserRecord): BoardUser => ({
+  id: user.id,
+  username: user.username,
+  countryCode: user.countryCode,
+  level: user.level,
+});
 
 export class LeaderboardService {
   private timer: NodeJS.Timeout | null = null;
@@ -69,6 +90,57 @@ export class LeaderboardService {
     }
 
     return JSON.parse(stored.json) as Leaderboard;
+  }
+
+  /**
+   * A board containing only the caller and their friends.
+   *
+   * Materialising one board per user would mean thousands of boards, almost
+   * all of them never read. Instead the rebuild also stores the per-player
+   * AGGREGATE table — one row per active player, small — and a friends board
+   * ranks straight from it.
+   *
+   * This is still not a live query: it touches at most a couple of hundred
+   * pre-computed rows and never looks at a match. The thing that made global
+   * boards dangerous was scanning every match ever played, and that does not
+   * happen here.
+   */
+  async readFriends(
+    userIds: readonly UserId[],
+    category: LeaderboardCategoryId,
+    period: LeaderboardPeriod,
+  ): Promise<Leaderboard> {
+    const definition = findCategory(category);
+    const stored = await this.repos.leaderboards.get(aggregateKey(period));
+
+    const scope: LeaderboardScope = { kind: 'global' };
+
+    if (!definition || !stored) {
+      return {
+        category,
+        period,
+        scope,
+        rows: [],
+        computedAt: this.lastRebuildAt,
+        minMatches: definition?.minMatches ?? 1,
+      };
+    }
+
+    const snapshot = JSON.parse(stored.json) as {
+      aggregates: PlayerAggregate[];
+      users: BoardUser[];
+    };
+
+    const wanted = new Set(userIds);
+    const users = new Map(
+      snapshot.users.filter((u) => wanted.has(u.id)).map((u) => [u.id, u as UserRecord]),
+    );
+
+    return rank(
+      snapshot.aggregates.filter((a) => wanted.has(a.userId)),
+      users,
+      { category: definition, period, scope, limit: BOARD_SIZE, computedAt: stored.computedAt },
+    );
   }
 
   /**
@@ -109,6 +181,24 @@ export class LeaderboardService {
 
     for (const period of LEADERBOARD_PERIODS) {
       const aggregates = aggregate(matches, periodStart(period, now), now + 1);
+
+      /*
+       * The aggregate table itself, so friends boards can be ranked without
+       * materialising one board per user (see `readFriends`).
+       *
+       * Only the fields a board ROW needs are stored. Serialising whole user
+       * records here would write password hashes into a cache that exists to
+       * be read quickly and widely — nothing sends them anywhere, but a
+       * credential has no business sitting in a leaderboard snapshot.
+       */
+      await this.repos.leaderboards.put({
+        key: aggregateKey(period),
+        json: JSON.stringify({
+          aggregates: [...aggregates.values()],
+          users: [...users.values()].map(displayFields),
+        }),
+        computedAt: now,
+      });
 
       for (const category of LEADERBOARD_CATEGORIES) {
         for (const scope of scopes) {
