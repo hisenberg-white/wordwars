@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { Route, Routes } from 'react-router-dom';
+import { bindAudio, installAudioUnlock } from '@/audio/bindAudio';
 import { Backdrop } from '@/ui/Backdrop';
 import { useConnectionLifecycle } from '@/net/useConnection';
 import { LandingScreen } from '@/features/landing/LandingScreen';
@@ -10,6 +12,18 @@ import { PENDING_ROUTES } from './routes';
 
 export function App() {
   useConnectionLifecycle();
+
+  // Audio binds once for the app's lifetime and rides the same event stream as
+  // the renderer, so sound can never drift out of sync with what is on screen.
+  useEffect(() => {
+    const offAudio = bindAudio();
+    const offUnlock = installAudioUnlock();
+
+    return () => {
+      offAudio();
+      offUnlock();
+    };
+  }, []);
 
   return (
     <>

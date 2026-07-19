@@ -607,7 +607,44 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
       → Damage numbers pop, arc and fade from a pool. A number travelling in a
       straight line reads as UI; one thrown on an arc reads as debris from the hit.
       → 234 web tests.
-- [ ] 3.8 Audio + SFX
+- [x] 3.8 Audio + SFX
+      → **Fully synthesised, no audio files.** Same reasoning as the procedural
+      fighters (§6.3): waiting on an audio pass would mean taking a SILENT game
+      through the 3.11 playtest gate, and a silent fighting game feels broken in a
+      way no amount of animation fixes. Real samples swap in behind the same
+      `VOICES` interface in phase 5.
+      → Every voice is a filtered noise burst (the crack) plus a pitched
+      oscillator (the body) — which is how real impact sounds are built, and why
+      these read as hits rather than beeps. Voices are spread across the spectrum
+      so a busy exchange stays legible: impacts mid, crits bright, Ultimate sweeps
+      through, miss low where nothing else lives.
+      → `audio/soundFor.ts` is pure and tested (19 tests). **The combo pitch ladder**
+      is the best idea in this step: each clean hit is voiced slightly higher than
+      the last, so a streak audibly CLIMBS — the player hears their momentum before
+      they have time to read the counter. Capped at 1.6×, because uncapped a
+      40-combo ends somewhere between shrill and inaudible.
+      → **Ducking is the point, not the volume** (§5.5 "Silence sells impact").
+      Ducking escalates none → crit → ultimate → KO. Pulling the floor out from
+      under a big hit lands harder than raising its own volume ever could. Routine
+      hits never duck, or the mix would pump constantly.
+      → A miss has its OWN low, dull voice — never a quieter impact. In a fast
+      exchange the player's eyes are on the next word, so they must be able to tell
+      a mistake from a weak hit by ear alone.
+      → Keystrokes whisper (gain 0.1 vs ~0.6 for a hit). In a game where every word
+      is an attack, the WORD is the loud event; prominent key clicks would turn the
+      mix into a keyboard recording and bury the combat.
+      → Keystroke ticks fire only when typed length GREW — otherwise holding
+      backspace to clear a word sounds like a drum roll. Tested.
+      → `AudioContext` is created lazily and unlocked on the first pointer/key
+      event anywhere in the document, so the player never sees a "click to enable
+      audio" prompt — that is asking them to fix a problem they did not create.
+      Every audio failure path is swallowed: the fight is fully playable in silence.
+      → Audio rides the SAME event stream as the renderer, so a hit sound can never
+      fire without a visible hit.
+      → 261 web tests.
+      → DEFERRED: music. Procedural music is a large lift likely to sound bad;
+      real tracks land in phase 5 alongside the art. The `master` bus already
+      exists for it.
 - [ ] 3.9 Victory/defeat screen + rematch
 - [ ] 3.10 Reconnect + forfeit
 - [ ] 3.11 **GATE: 20 internal playtest matches. Tune §5.2 before Phase 4.**
