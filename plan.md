@@ -13,7 +13,7 @@ picked up cold and executed without re-deriving decisions.
 > **Any new session: start here.** Work the first unchecked box in the current
 > phase. Tick boxes as they land. Do not rebuild anything already ticked.
 
-**Current phase: Phase 5 — Production Polish.** 5.5 and 5.7 complete.
+**Current phase: Phase 5 — Production Polish.** 5.5 and 5.7 complete; 5.8 partially met (see below).
 
 > Phase 3 is done bar the SUBJECTIVE half of the 3.11 gate: the balance numbers
 > are proven by simulation, but **nobody has actually played this yet.** That
@@ -1026,7 +1026,35 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
       → 126 engine tests. **Live-verified 14 checks** on a real best-of-3: no
       match end on the first knockdown, exactly one knockout, HP restored, the
       loser revived, the word stream unbroken, and a 2–0 result.
-- [ ] 5.8 Load test to 1000 concurrent matches
+- [~] 5.8 Load test — **verified to ~400 matches, NOT 1000**
+  → `tools/loadtest` + `/metrics` + event-loop instrumentation. Capacity is
+  now a measurement rather than an opinion.
+  → **Event-loop lag is the number that matters**, not throughput. Every
+  match shares one loop (D2), so a stall does not degrade one fight — it
+  freezes all of them at once. A server at 80% CPU with a flat loop is
+  healthy; one at 30% CPU with 200ms spikes is already ruining every match.
+  → **FOUND: per-match timers were the capacity limit, not per-word work.**
+  200 nearly idle matches (40 words/sec between them) degraded the loop MORE
+  than 100 matches carrying twelve times the traffic. Each match owned three
+  intervals, so 200 matches meant 600 timers and ~8,800 wake-ups a second
+  spent on nothing.
+  → **The first fix made it WORSE, and only re-measuring caught it.** One
+  shared clock took loop p99 at 100 matches from 24ms to 96ms: per-match
+  timers had been naturally staggered by when each match started, and
+  collapsing them into one clock synchronised every match into the same
+  loop iteration — many small jobs became one thundering herd, which is
+  exactly what loop lag measures. Sharding the sweep across four slices
+  fixed it and beat the original design. Roughly 4× capacity, none of it
+  predictable from reading the code.
+  → Measured: 400 matches at loop p99 38ms (healthy), 700 at 64ms
+  (marginal), 1000 at 185ms (fails).
+  → **Honest limits of this rig:** the idle floor is ~15ms because Windows'
+  timer resolution is ~15.6ms, and the bots share a CPU with the server —
+  at 1000 matches the harness drives 2000 sockets from ONE Node process and
+  is probably the bottleneck itself. The 1000 row is not evidence the server
+  cannot do 1000; it is evidence this rig cannot measure it. Left as `[~]`
+  rather than ticked: the plan's target is 1000, and honestly testing that
+  needs load generators on separate machines.
 - [ ] 5.9 Docs
 
 ### Environment notes (as of setup)

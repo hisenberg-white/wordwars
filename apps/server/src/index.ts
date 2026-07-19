@@ -4,6 +4,7 @@ import { logger } from './logger.js';
 import { createApp } from './http/app.js';
 import { createMemoryRepositories } from './db/memory.js';
 import { createGatewayWithContext } from './realtime/gateway.js';
+import type { MetricsHolder } from './http/routes/metrics.js';
 import { LeaderboardService } from './services/leaderboardService.js';
 import { OnlineRegistry } from './realtime/onlineRegistry.js';
 
@@ -31,9 +32,19 @@ leaderboards.start(env.LEADERBOARD_REBUILD_MS);
  */
 const online = new OnlineRegistry();
 
-const app = createApp(repositories, leaderboards, online);
+/*
+ * The gateway needs the HTTP server, which needs the app, which needs the
+ * gateway to report on. The holder breaks the cycle: the metrics route is
+ * mounted now and filled in below.
+ */
+const metrics: MetricsHolder = { current: null };
+
+const app = createApp(repositories, leaderboards, online, metrics);
 const httpServer = createServer(app);
-const io = createGatewayWithContext(httpServer, repositories, online).io;
+const gateway = createGatewayWithContext(httpServer, repositories, online);
+const io = gateway.io;
+
+metrics.current = { io: gateway.io, ctx: gateway.ctx, online };
 
 httpServer.listen(env.PORT, env.HOST, () => {
   logger.info(

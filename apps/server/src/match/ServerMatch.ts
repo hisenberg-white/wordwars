@@ -37,9 +37,9 @@ import { CheatMonitor } from './CheatMonitor.js';
  * and drift accumulates slowly, so sending them three times less often costs
  * nothing and roughly halves the bandwidth.
  */
-const EVENT_FLUSH_MS = 33;
-const SNAPSHOT_MS = 100;
-const TICK_MS = 250;
+export const EVENT_FLUSH_MS = 33;
+export const SNAPSHOT_MS = 100;
+export const TICK_MS = 250;
 
 /**
  * Keep this many words ahead of the fastest player.
@@ -109,10 +109,15 @@ export class ServerMatch {
   private sentencesSent = 0;
   private wordsSent = 0;
 
-  private eventTimer: ReturnType<typeof setInterval> | null = null;
-  private snapshotTimer: ReturnType<typeof setInterval> | null = null;
-  private tickTimer: ReturnType<typeof setInterval> | null = null;
   private intermissionTimer: ReturnType<typeof setTimeout> | null = null;
+  /**
+   * Paused matches stay registered with the scheduler but take no beats.
+   *
+   * Deregistering and re-registering would work too, but this keeps the
+   * pause/resume decision in one place — the match knows whether it is paused;
+   * the scheduler should not have to.
+   */
+  private ticking = false;
 
   private startedAt = 0;
   private finished = false;
@@ -467,23 +472,35 @@ export class ServerMatch {
     };
   }
 
+  /*
+   * The three beats, driven by the shared MatchScheduler.
+   *
+   * These used to be three `setInterval`s per match. The 5.8 load test showed
+   * that cost was per-MATCH rather than per-word — 200 idle matches degraded
+   * the loop more than 100 busy ones — so the clock now lives in one place and
+   * every match is a callback on it. See MatchScheduler.
+   */
+  flushDue(): void {
+    if (this.ticking) this.flushEvents();
+  }
+
+  snapshotDue(): void {
+    if (this.ticking) this.sendSnapshot();
+  }
+
+  tickDue(): void {
+    if (this.ticking) this.advance();
+  }
+
   private startTimers(): void {
-    this.stopTimers();
-    this.eventTimer = setInterval(() => this.flushEvents(), EVENT_FLUSH_MS);
-    this.snapshotTimer = setInterval(() => this.sendSnapshot(), SNAPSHOT_MS);
-    this.tickTimer = setInterval(() => this.advance(), TICK_MS);
+    this.ticking = true;
   }
 
   private stopTimers(): void {
-    if (this.eventTimer) clearInterval(this.eventTimer);
-    if (this.snapshotTimer) clearInterval(this.snapshotTimer);
-    if (this.tickTimer) clearInterval(this.tickTimer);
+    this.ticking = false;
     // A forfeit or disconnect DURING an intermission must not resurrect the
     // match four seconds later by starting a round nobody is in.
     if (this.intermissionTimer) clearTimeout(this.intermissionTimer);
-    this.eventTimer = null;
-    this.snapshotTimer = null;
-    this.tickTimer = null;
     this.intermissionTimer = null;
   }
 

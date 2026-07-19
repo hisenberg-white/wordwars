@@ -44,6 +44,11 @@ export class MatchmakingService {
 
   constructor(private readonly onPaired: (pairing: Pairing) => void) {}
 
+  /** Players waiting across every mode, for metrics. */
+  get size(): number {
+    return this.queuedPlayers.size;
+  }
+
   isQueued(playerId: PlayerId): boolean {
     return this.queuedPlayers.has(playerId);
   }

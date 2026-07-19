@@ -8,6 +8,7 @@ import { createAuthRouter } from './routes/auth.js';
 import { createProfileRouter } from './routes/profile.js';
 import { createLeaderboardRouter } from './routes/leaderboard.js';
 import { createFriendsRouter } from './routes/friends.js';
+import { createMetricsRouter, type MetricsHolder } from './routes/metrics.js';
 import { OFFLINE_PRESENCE, type PresenceLookup } from '../services/friends.js';
 import { LeaderboardService } from '../services/leaderboardService.js';
 import type { Repositories } from '../db/repositories.js';
@@ -33,6 +34,12 @@ export function createApp(
    * always-offline for tests that build an app without a gateway.
    */
   presence: PresenceLookup = OFFLINE_PRESENCE,
+  /*
+   * Optional so tests can build an app without a gateway. Absent, the metrics
+   * endpoint simply is not mounted — better than mounting one that reports
+   * zeros and would be believed.
+   */
+  metrics?: MetricsHolder,
 ): Express {
   const app = express();
 
@@ -65,6 +72,7 @@ export function createApp(
   app.use('/api/profile', createProfileRouter(repos));
   app.use('/api/leaderboard', createLeaderboardRouter(leaderboards, repos));
   app.use('/api/friends', createFriendsRouter(repos, presence));
+  if (metrics) app.use('/metrics', createMetricsRouter(metrics));
 
   app.use((_req: Request, res: Response) => {
     res.status(404).json({ error: { code: 'NOT_FOUND' } });

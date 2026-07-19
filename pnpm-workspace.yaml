@@ -1,6 +1,9 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+  # The load-test harness (5.8). A workspace member so it gets a real
+  # socket.io-client rather than reaching into another package's node_modules.
+  - 'tools/*'
 
 # pnpm requires explicit opt-in for postinstall scripts. Each of these fetches a
 # platform-native binary that its tooling cannot run without:

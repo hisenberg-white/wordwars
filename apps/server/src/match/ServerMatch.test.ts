@@ -1,7 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { generateSentence, WORDS_PER_SENTENCE } from '@wordwars/content';
 import type { CombatEvent, MatchResult, MatchSnapshot, PlayerId, Sentence } from '@wordwars/shared';
-import { ServerMatch, type MatchParticipant, type MatchSink } from './ServerMatch.js';
+import { MatchScheduler } from './MatchScheduler.js';
+import {
+  EVENT_FLUSH_MS,
+  SNAPSHOT_MS,
+  TICK_MS,
+  ServerMatch,
+  type MatchParticipant,
+  type MatchSink,
+} from './ServerMatch.js';
 
 const ALICE = 'alice' as PlayerId;
 const BOB = 'bob' as PlayerId;
@@ -24,9 +32,20 @@ interface Captured {
 let captured: Captured;
 let sink: MatchSink;
 let match: ServerMatch;
+let scheduler: MatchScheduler;
 
+/*
+ * Matches are driven by the shared clock, exactly as in production.
+ *
+ * They stopped owning their own intervals when the 5.8 load test showed the
+ * per-match timers were what degraded the event loop. Registering here keeps
+ * these tests on the real path — `vi.advanceTimersByTime` drives the scheduler,
+ * which drives the match.
+ */
 function newMatch(overrides: Partial<Parameters<typeof buildOptions>[0]> = {}) {
-  return new ServerMatch(buildOptions(overrides), sink);
+  const created = new ServerMatch(buildOptions(overrides), sink);
+  scheduler.add(created);
+  return created;
 }
 
 function buildOptions(overrides: Record<string, unknown> = {}) {
@@ -82,6 +101,7 @@ function submit(playerId: PlayerId, wordIndex: number, dirty = false): void {
 
 beforeEach(() => {
   vi.useFakeTimers();
+  scheduler = new MatchScheduler(EVENT_FLUSH_MS, SNAPSHOT_MS, TICK_MS);
   captured = { events: [], snapshots: [], sentences: [], result: null };
 
   sink = {
