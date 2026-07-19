@@ -16,6 +16,7 @@ import type { Pairing } from '../matchmaking/MatchmakingService.js';
 import { createRealtimeContext, type RealtimeContext } from './context.js';
 import { registerGuestHandlers } from './handlers/guest.js';
 import { registerMatchmakingHandlers } from './handlers/matchmaking.js';
+import { registerRoomHandlers } from './handlers/room.js';
 import { RateLimiter, ruleFor } from './rateLimit.js';
 import { validated } from './validate.js';
 
@@ -157,6 +158,7 @@ export function createGatewayWithContext(httpServer: HttpServer): Gateway {
 
     registerGuestHandlers(socket);
     registerMatchmakingHandlers(socket, ctx);
+    registerRoomHandlers(socket, ctx, io);
 
     /**
      * Heartbeat / clock sync.

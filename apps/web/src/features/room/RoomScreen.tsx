@@ -1,0 +1,189 @@
+import { useEffect, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { roomManager } from '@/net/RoomManager';
+import { useIdentity, useRoom } from '@/net/useConnection';
+import { setAppPhase } from '@/store/appPhase';
+import { Button } from '@/ui/Button';
+import { Panel, PanelLabel } from '@/ui/Panel';
+import { TopNav } from '@/features/landing/components/TopNav';
+import { InviteLink } from './InviteLink';
+
+/**
+ * A private room, reached directly by its shareable URL.
+ *
+ * The full lobby — character select, ready-up, chat, host settings — lands in
+ * 2.5/2.6. What exists here is the part that makes the room usable at all:
+ * arriving via a link, seeing who else is here, and being able to leave.
+ */
+export function RoomScreen() {
+  const { code } = useParams<{ code: string }>();
+  const navigate = useNavigate();
+  const { identity } = useIdentity();
+  const { room, status, error, needsPassword } = useRoom();
+
+  const [password, setPassword] = useState('');
+  const attemptedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setAppPhase('lobby');
+    return () => setAppPhase('menu');
+  }, []);
+
+  /**
+   * Join on arrival.
+   *
+   * Waits for an identity first, so the roster never briefly shows the
+   * provisional "Challenger" name. Guarded by a ref because React 19 StrictMode
+   * runs effects twice in development, and a double join would be a wasted
+   * round trip on every navigation.
+   */
+  useEffect(() => {
+    if (!code || !identity) return;
+    if (room?.code === code) return;
+    if (attemptedRef.current === code) return;
+
+    attemptedRef.current = code;
+    void roomManager.join(code);
+  }, [code, identity, room?.code]);
+
+  const submitPassword = async () => {
+    if (!code) return;
+    const joined = await roomManager.join(code, password);
+    if (!joined) setPassword('');
+  };
+
+  const leave = () => {
+    roomManager.leave();
+    navigate('/');
+  };
+
+  if (needsPassword) {
+    return (
+      <Shell>
+        <Panel className="w-full max-w-md p-7 text-center">
+          <PanelLabel className="text-ultimate">This room is locked</PanelLabel>
+          <input
+            type="password"
+            value={password}
+            autoFocus
+            onChange={(e) => setPassword(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void submitPassword();
+            }}
+            placeholder="Room password"
+            aria-label="Room password"
+            className="mt-5 w-full border border-line bg-abyss px-4 py-3 text-center text-ink outline-none focus:border-p2"
+          />
+          <div className="mt-5 flex justify-center gap-3">
+            <Button variant="ghost" size="sm" onClick={() => navigate('/room')}>
+              Back
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => void submitPassword()}>
+              Join
+            </Button>
+          </div>
+        </Panel>
+      </Shell>
+    );
+  }
+
+  if (status === 'error' && !room) {
+    return (
+      <Shell>
+        <Panel className="w-full max-w-md p-8 text-center">
+          <p className="font-display text-2xl text-danger">Could not join</p>
+          <p className="mt-3 text-sm text-ink-dim">
+            {error === 'ROOM_NOT_FOUND'
+              ? `No room with the code ${code}. It may have closed.`
+              : 'Something went wrong joining that room.'}
+          </p>
+          <Button variant="secondary" className="mt-6" onClick={() => navigate('/room')}>
+            Back to rooms
+          </Button>
+        </Panel>
+      </Shell>
+    );
+  }
+
+  if (!room) {
+    return (
+      <Shell>
+        <p className="text-sm text-ink-dim">Joining room {code}…</p>
+      </Shell>
+    );
+  }
+
+  return (
+    <Shell>
+      <div className="w-full max-w-3xl space-y-6">
+        <Panel className="p-8">
+          <InviteLink code={room.code} />
+        </Panel>
+
+        <Panel className="p-6">
+          <div className="flex items-baseline justify-between">
+            <PanelLabel>Fighters</PanelLabel>
+            <span className="text-xs text-ink-faint">
+              {room.members.filter((m) => !m.isSpectator).length} / {room.settings.maxPlayers}
+            </span>
+          </div>
+
+          <ul className="mt-4 space-y-2">
+            {room.members.map((member, index) => (
+              <li
+                key={member.playerId}
+                className="flex items-center gap-3 border border-line/60 bg-abyss/50 px-4 py-3"
+              >
+                <span
+                  className={`size-2 rounded-full ${index === 0 ? 'bg-p1' : 'bg-p2'}`}
+                  aria-hidden
+                />
+                <span className="font-display text-sm uppercase tracking-wide text-ink">
+                  {member.nickname}
+                </span>
+                {member.isHost && (
+                  <span className="font-display text-[0.6rem] uppercase tracking-[0.2em] text-ultimate">
+                    Host
+                  </span>
+                )}
+                {member.isSpectator && (
+                  <span className="text-[0.6rem] uppercase tracking-[0.2em] text-ink-faint">
+                    Spectating
+                  </span>
+                )}
+                <span className="ml-auto text-xs text-ink-faint">
+                  {member.ping !== null ? `${member.ping} ms` : '—'}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          {room.members.length < 2 && (
+            <p className="mt-4 text-center text-sm text-ink-faint">
+              Waiting for an opponent — send them the code above.
+            </p>
+          )}
+        </Panel>
+
+        <div className="flex justify-between">
+          <Button variant="ghost" onClick={leave}>
+            Leave room
+          </Button>
+          {/* Ready-up and start arrive with the lobby in 2.5/2.6. */}
+          <Button variant="primary" disabled title="Lobby controls arrive in step 2.5">
+            Start Match
+          </Button>
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+function Shell({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="flex min-h-screen flex-col">
+      <TopNav />
+      <main className="flex flex-1 items-center justify-center px-6 py-16">{children}</main>
+    </div>
+  );
+}

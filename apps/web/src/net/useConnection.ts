@@ -2,6 +2,7 @@ import { useEffect, useSyncExternalStore } from 'react';
 import { connection, type ConnectionSnapshot } from './ConnectionManager';
 import { identity, type IdentitySnapshot } from './IdentityManager';
 import { matchmaking, type MatchmakingSnapshot } from './MatchmakingManager';
+import { roomManager, type RoomSnapshot } from './RoomManager';
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
 
@@ -42,5 +43,13 @@ export function useMatchmaking(): MatchmakingSnapshot {
     matchmaking.subscribe,
     matchmaking.getSnapshot,
     matchmaking.getSnapshot,
+  );
+}
+
+export function useRoom(): RoomSnapshot {
+  return useSyncExternalStore(
+    roomManager.subscribe,
+    roomManager.getSnapshot,
+    roomManager.getSnapshot,
   );
 }

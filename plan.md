@@ -220,7 +220,37 @@ compile-verified and test-verified but never actually looked at.
       → **OPEN PRODUCT QUESTION:** with no players online, a real user waits forever.
       Needs bots or a training fallback before any public launch. Flagged, not
       solved — it's a product decision, not a technical one.
-- [ ] 2.4 Private rooms (create, code, share link, join)
+- [x] 2.4 Private rooms (create, code, share link, join)
+      → `room:create` / `room:join` / `room:leave`; client `RoomManager`,
+      `RoomEntryScreen` (create + join side by side, no tab — a player is either
+      hosting or invited, and making either click a tab first buys nothing),
+      `RoomScreen` at `/room/:code`, `InviteLink`.
+      → Invite offers BOTH code and link: the link is what you paste in a group
+      chat, the code is what you read aloud to someone next to you. Forcing one
+      breaks half the ways friends actually get into a room.
+      → **Password is verified BEFORE detaching the player from their current room** —
+      a wrong guess must not cost you the seat you already had. Integration test
+      covers exactly this.
+      → Joining while already in a room MOVES you rather than erroring; clicking a
+      friend's link from inside another room should work, not dead-end.
+      → Rejoining your own room is a no-op (a refresh on an invite link lands there).
+      → **SECURITY BUG FOUND AND FIXED BY A TEST:** `Buffer.from('zz','hex')` returns
+      an EMPTY buffer rather than throwing. A malformed stored hash therefore
+      decoded to zero length, scrypt was asked for a zero-length key, and
+      `timingSafeEqual(<empty>,<empty>)` returned TRUE — a stored value that
+      accepts EVERY password. Fixed with a strict hex + non-empty guard;
+      8 malformed-input cases now locked down.
+      → Room passwords use node's built-in scrypt, NOT argon2: a room password is a
+      short-lived secret shared deliberately with friends, not an account
+      credential, and adding a native module complicates every install and Docker
+      image. Real user auth (4.1) gets argon2id and must not reuse this.
+      → **TYPECHECK CAUGHT WHAT TESTS COULD NOT:** socket.io-client does not infer
+      `Ack<T>` through `emitWithAck`, so those results were `any` — every
+      assertion on them was silently unchecked. Added a typed `joinRoom` helper to
+      restore real coverage. Worth remembering when adding socket tests.
+      → 107 tests. Live-verified 11 checks end to end: create, join by code,
+      host notified, room-full refusal, spectator past the cap, hasPassword
+      reporting, and all three password paths.
 - [ ] 2.5 Lobby (player cards, character select, arena preview, ready, chat, ping)
 - [ ] 2.6 Host settings panel + 3-2-1-FIGHT countdown
 

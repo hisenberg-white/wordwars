@@ -2,7 +2,7 @@ import { createServer, type Server as HttpServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { io as createClient, type Socket as ClientSocket } from 'socket.io-client';
-import type { ClientToServerEvents, ServerToClientEvents } from '@wordwars/shared';
+import type { Ack, ClientToServerEvents, RoomState, ServerToClientEvents } from '@wordwars/shared';
 import { createGateway, type GameServer } from './gateway.js';
 
 /**
@@ -344,6 +344,242 @@ describe('gateway', () => {
 
       // Still searching means it correctly refused to pair with the ghost.
       await expect(searching).resolves.toBeTruthy();
+    });
+  });
+
+  describe('private rooms', () => {
+    async function identified(nickname: string): Promise<TestClient> {
+      const client = await connectClient();
+      await client.timeout(2_000).emitWithAck('guest:init', { nickname });
+      return client;
+    }
+
+    const SETTINGS = {
+      mode: '1v1',
+      arenaId: 'dojo',
+      randomArena: false,
+      randomCharacter: false,
+      difficulty: 'normal',
+      language: 'en',
+      roundCount: 3,
+      enableUltimate: true,
+      enableCrits: true,
+      isPublic: false,
+      maxPlayers: 2,
+      allowSpectators: true,
+    } as const;
+
+    /**
+     * Typed wrapper around `emitWithAck`.
+     *
+     * socket.io-client does not infer our `Ack<T>` return type through
+     * `emitWithAck`, so raw calls come back as `any` — which silently turns
+     * every assertion below into a no-op check against an untyped value.
+     * Naming the type here restores real coverage; typecheck caught this,
+     * the tests could not.
+     */
+    async function joinRoom(
+      client: TestClient,
+      payload: { code: string; password?: string; asSpectator?: boolean },
+    ): Promise<Ack<RoomState>> {
+      return (await client.timeout(3_000).emitWithAck('room:join', payload)) as Ack<RoomState>;
+    }
+
+    async function createRoom(client: TestClient, password?: string) {
+      const res = await client
+        .timeout(3_000)
+        .emitWithAck('room:create', { settings: SETTINGS, ...(password ? { password } : {}) });
+      if (!res.ok) throw new Error(`create failed: ${res.error.code}`);
+      return res.data;
+    }
+
+    it('creates a room with the creator as host', async () => {
+      const host = await identified('HostFox');
+      const room = await createRoom(host);
+
+      expect(room.code).toMatch(/^[A-Z0-9]{6}$/);
+      expect(room.members).toHaveLength(1);
+      expect(room.members[0]?.nickname).toBe('HostFox');
+      expect(room.members[0]?.isHost).toBe(true);
+      expect(room.settings.hasPassword).toBe(false);
+    });
+
+    it('lets a second player join by code', async () => {
+      const host = await identified('HostFox');
+      const guest = await identified('GuestViper');
+      const room = await createRoom(host);
+
+      const res = await joinRoom(guest, { code: room.code });
+
+      expect(res.ok).toBe(true);
+      if (!res.ok) throw new Error('unreachable');
+      expect(res.data.members.map((m) => m.nickname).sort()).toEqual(['GuestViper', 'HostFox']);
+    });
+
+    it('tells the host when someone joins', async () => {
+      const host = await identified('HostFox');
+      const guest = await identified('GuestViper');
+      const room = await createRoom(host);
+
+      const updated = new Promise<{ members: Array<{ nickname: string }> }>((resolve) => {
+        host.once('room:state', resolve as never);
+      });
+
+      await guest.timeout(3_000).emitWithAck('room:join', { code: room.code });
+
+      const state = await updated;
+      expect(state.members).toHaveLength(2);
+    });
+
+    it('rejects an unknown code', async () => {
+      const client = await identified('Lost');
+      const res = await client.timeout(3_000).emitWithAck('room:join', { code: 'ZZZZZZ' });
+
+      expect(res.ok).toBe(false);
+      if (res.ok) throw new Error('unreachable');
+      expect(res.error.code).toBe('ROOM_NOT_FOUND');
+    });
+
+    it('refuses to over-fill a room', async () => {
+      const host = await identified('HostFox');
+      const guest = await identified('GuestViper');
+      const third = await identified('ThirdWheel');
+      const room = await createRoom(host);
+
+      await guest.timeout(3_000).emitWithAck('room:join', { code: room.code });
+      const res = await third.timeout(3_000).emitWithAck('room:join', { code: room.code });
+
+      expect(res.ok).toBe(false);
+      if (res.ok) throw new Error('unreachable');
+      expect(res.error.code).toBe('ROOM_FULL');
+    });
+
+    it('admits a spectator past the player cap', async () => {
+      const host = await identified('HostFox');
+      const guest = await identified('GuestViper');
+      const watcher = await identified('Watcher');
+      const room = await createRoom(host);
+
+      await guest.timeout(3_000).emitWithAck('room:join', { code: room.code });
+      const res = await joinRoom(watcher, { code: room.code, asSpectator: true });
+
+      expect(res.ok).toBe(true);
+      if (!res.ok) throw new Error('unreachable');
+      expect(res.data.members.find((m) => m.nickname === 'Watcher')?.isSpectator).toBe(true);
+    });
+
+    describe('passwords', () => {
+      it('admits a correct password', async () => {
+        const host = await identified('HostFox');
+        const guest = await identified('GuestViper');
+        const room = await createRoom(host, 'hunter2');
+
+        expect(room.settings.hasPassword).toBe(true);
+
+        const res = await guest
+          .timeout(3_000)
+          .emitWithAck('room:join', { code: room.code, password: 'hunter2' });
+
+        expect(res.ok).toBe(true);
+      });
+
+      it.each([
+        ['a wrong password', 'wrong'],
+        ['no password at all', undefined],
+      ])('refuses %s', async (_label, password) => {
+        const host = await identified('HostFox');
+        const guest = await identified('GuestViper');
+        const room = await createRoom(host, 'hunter2');
+
+        const res = await guest.timeout(3_000).emitWithAck('room:join', {
+          code: room.code,
+          ...(password ? { password } : {}),
+        });
+
+        expect(res.ok).toBe(false);
+        if (res.ok) throw new Error('unreachable');
+        expect(res.error.code).toBe('WRONG_PASSWORD');
+      });
+
+      /**
+       * A failed guess must not evict the player from the room they are
+       * already sitting in — that would turn a typo into losing your seat.
+       */
+      it('leaves the player in their current room after a failed attempt', async () => {
+        const host = await identified('HostFox');
+        const wanderer = await identified('Wanderer');
+
+        const ownRoom = await createRoom(wanderer);
+        const locked = await createRoom(host, 'hunter2');
+
+        const failed = await wanderer
+          .timeout(3_000)
+          .emitWithAck('room:join', { code: locked.code, password: 'nope' });
+        expect(failed.ok).toBe(false);
+
+        // Still a member of the original room.
+        const rejoin = await joinRoom(wanderer, { code: ownRoom.code });
+        expect(rejoin.ok).toBe(true);
+        if (!rejoin.ok) throw new Error('unreachable');
+        expect(rejoin.data.members.map((m) => m.nickname)).toContain('Wanderer');
+      });
+    });
+
+    it('treats rejoining the same room as a no-op', async () => {
+      const host = await identified('HostFox');
+      const room = await createRoom(host);
+
+      const again = await host.timeout(3_000).emitWithAck('room:join', { code: room.code });
+
+      expect(again.ok).toBe(true);
+      if (!again.ok) throw new Error('unreachable');
+      expect(again.data.members).toHaveLength(1);
+    });
+
+    it('moves a player between rooms rather than refusing', async () => {
+      const host = await identified('HostFox');
+      const mover = await identified('Mover');
+
+      const first = await createRoom(mover);
+      const second = await createRoom(host);
+
+      await mover.timeout(3_000).emitWithAck('room:join', { code: second.code });
+
+      // Gone from the first room, which had only them, so it is destroyed.
+      const orphan = await host.timeout(3_000).emitWithAck('room:join', { code: first.code });
+      expect(orphan.ok).toBe(false);
+    });
+
+    it('removes a leaving player and updates everyone else', async () => {
+      const host = await identified('HostFox');
+      const guest = await identified('GuestViper');
+      const room = await createRoom(host);
+      await guest.timeout(3_000).emitWithAck('room:join', { code: room.code });
+
+      const updated = new Promise<{ members: unknown[] }>((resolve) => {
+        host.once('room:state', resolve as never);
+      });
+
+      await guest.timeout(3_000).emitWithAck('room:leave');
+
+      const state = await updated;
+      expect(state.members).toHaveLength(1);
+    });
+
+    it('promotes a new host when the host leaves', async () => {
+      const host = await identified('HostFox');
+      const guest = await identified('GuestViper');
+      const room = await createRoom(host);
+      await guest.timeout(3_000).emitWithAck('room:join', { code: room.code });
+
+      const updated = new Promise<{ members: Array<{ nickname: string; isHost: boolean }> }>(
+        (resolve) => guest.once('room:state', resolve as never),
+      );
+
+      await host.timeout(3_000).emitWithAck('room:leave');
+
+      const state = await updated;
+      expect(state.members.find((m) => m.isHost)?.nickname).toBe('GuestViper');
     });
   });
 

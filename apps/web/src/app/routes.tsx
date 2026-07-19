@@ -12,16 +12,6 @@ export const PENDING_ROUTES: ReadonlyArray<{
   element: ReactElement;
 }> = [
   {
-    path: '/room',
-    element: (
-      <ComingSoonScreen
-        step="2.4"
-        title="Private Room"
-        description="Create a room, get a six-character code, and send it to a friend. Host picks the arena, the rules and the round count."
-      />
-    ),
-  },
-  {
     path: '/leaderboard',
     element: (
       <ComingSoonScreen
