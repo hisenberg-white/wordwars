@@ -13,71 +13,112 @@ picked up cold and executed without re-deriving decisions.
 > **Any new session: start here.** Work the first unchecked box in the current
 > phase. Tick boxes as they land. Do not rebuild anything already ticked.
 
-**Current phase: Phase 1 — Foundation**
+**Current phase: Phase 2 — Getting Two Humans Into A Fight** (Phase 1 complete)
+
+Quick start:
+
+```bash
+pnpm install
+cp apps/server/.env.example apps/server/.env
+pnpm dev                 # server :4000, web :5173
+pnpm lint && pnpm typecheck && pnpm test
+```
 
 ### Phase 1 — Foundation
+
 - [x] 1.1 Monorepo skeleton (pnpm workspaces + Turborepo, shared tsconfig/eslint/prettier)
       → root `package.json` (ESM), `pnpm-workspace.yaml`, `turbo.json`,
-        `packages/config` (eslint flat config + 3 tsconfigs), prettier, git init.
-        `exactOptionalPropertyTypes` is ON everywhere except React (noise > signal there).
+      `packages/config` (eslint flat config + 3 tsconfigs), prettier, git init.
+      `exactOptionalPropertyTypes` is ON everywhere except React (noise > signal there).
 - [x] 1.2 `packages/shared` — socket event contract + core types
       → branded IDs; `domain/{player,content,combat,match,room}`;
-        `net/{payloads,errors,contract}`. Zod schemas are the source of truth for
-        every inbound payload — TS types are `z.infer`'d so they cannot drift.
-        Consumed as TS source (no build step). Typecheck + lint clean.
+      `net/{payloads,errors,contract}`. Zod schemas are the source of truth for
+      every inbound payload — TS types are `z.infer`'d so they cannot drift.
+      Consumed as TS source (no build step). Typecheck + lint clean.
       → NOTE: wire compaction of `CombatEvent` (plan §7.2 tuple encoding) is
-        deferred to 3.3, where it can be measured instead of guessed. It slots in
-        behind a codec at one boundary; no call sites change.
+      deferred to 3.3, where it can be measured instead of guessed. It slots in
+      behind a codec at one boundary; no call sites change.
 - [x] 1.3 Server — Express + Socket.io + Zod env config + Pino logging + health check
       → `apps/server`: env validated at boot (fails loudly), pino (pretty in dev),
-        express + helmet + cors, `/health` (liveness) and `/health/ready` (readiness,
-        kept separate on purpose), typed Socket.io gateway, `validated()` wrapper so
-        no handler can skip Zod, per-socket token-bucket rate limiting applied as a
-        catch-all, graceful shutdown. Build via tsup (bundles shared). 6 tests pass.
+      express + helmet + cors, `/health` (liveness) and `/health/ready` (readiness,
+      kept separate on purpose), typed Socket.io gateway, `validated()` wrapper so
+      no handler can skip Zod, per-socket token-bucket rate limiting applied as a
+      catch-all, graceful shutdown. Build via tsup (bundles shared). 6 tests pass.
       → Every socket is assigned a provisional identity in `io.use()` before any
-        handler runs, so `SocketData` is never partially populated. Real guest
-        naming + token reclamation replaces it in 2.2.
+      handler runs, so `SocketData` is never partially populated. Real guest
+      naming + token reclamation replaces it in 2.2.
       → `PERSISTENCE=none` is the documented no-Docker dev mode.
 - [x] 1.4 Web — Vite + React + Tailwind shell with dark game theme + design tokens
       → `apps/web`: Vite 6, React 19, Tailwind v4 (CSS-first `@theme`), react-router,
-        self-hosted fonts (no CDN). `ui/` primitives: Button, Panel, Wordmark,
-        Backdrop, cn. Landing + 404 shells. Typecheck, lint, build all clean.
+      self-hosted fonts (no CDN). `ui/` primitives: Button, Panel, Wordmark,
+      Backdrop, cn. Landing + 404 shells. Typecheck, lint, build all clean.
       → **Design system decided here — everything downstream inherits it:**
-        the palette is built on the 1v1 RIVALRY. `--color-p1` crimson = you,
-        `--color-p2` cyan = them. Gold (`--color-ultimate`) is reserved for the
-        Ultimate and must never be used as a generic highlight. Angular
-        `clip-path` panels, not rounded corners — that one shape choice is what
-        separates "game" from "web app".
+      the palette is built on the 1v1 RIVALRY. `--color-p1` crimson = you,
+      `--color-p2` cyan = them. Gold (`--color-ultimate`) is reserved for the
+      Ultimate and must never be used as a generic highlight. Angular
+      `clip-path` panels, not rounded corners — that one shape choice is what
+      separates "game" from "web app".
       → Fonts: Chakra Petch (display/esports), Inter (reading), JetBrains Mono
-        (reserved for the typing band — fixed advance width stops reflow as the
-        player types).
+      (reserved for the typing band — fixed advance width stops reflow as the
+      player types).
       → NOTE: React 19 rather than the plan's React 18 — current stable, and the
-        ref-as-prop change removes forwardRef boilerplate across `ui/`.
+      ref-as-prop change removes forwardRef boilerplate across `ui/`.
       → NOT visually verified — no browser tooling in that session. Compilation of
-        `@theme` into real utilities was asserted by grepping the built CSS.
-        **Someone should eyeball this in a browser before Phase 2 styling builds on it.**
+      `@theme` into real utilities was asserted by grepping the built CSS.
+      **Someone should eyeball this in a browser before Phase 2 styling builds on it.**
 - [x] 1.5 Socket round-trip proven end to end (client connects, echoes, shows status)
       → `web/src/net/ConnectionManager.ts` — plain class OUTSIDE React, exposed via
-        `useSyncExternalStore`. This is the reference implementation of D3: network
-        data lands in mutable state, only coarse changes reach React. Phase 3's
-        keystroke path follows this exact shape, so it isn't invented under pressure.
+      `useSyncExternalStore`. This is the reference implementation of D3: network
+      data lands in mutable state, only coarse changes reach React. Phase 3's
+      keystroke path follows this exact shape, so it isn't invented under pressure.
       → Built on the heartbeat rather than an echo: gives ping AND the NTP-style
-        clock offset. `connection.serverNow()` is what the match countdown will use —
-        two players' machine clocks differ by seconds, so a raw `Date.now()`
-        countdown would visibly start the fight at different moments per screen.
+      clock offset. `connection.serverNow()` is what the match countdown will use —
+      two players' machine clocks differ by seconds, so a raw `Date.now()`
+      countdown would visibly start the fight at different moments per screen.
       → Ping is a MEDIAN of the last 5 samples; one stalled packet shouldn't make a
-        healthy connection look bad for 15s. Colour-coded <60 / <150 / above.
+      healthy connection look bad for 15s. Colour-coded <60 / <150 / above.
       → 7 gateway integration tests (real HTTP server, real gateway, real WebSocket,
-        no mocks) covering identity assignment, heartbeat, malformed-payload
-        rejection, and rate limiting. 13 tests total, all green.
+      no mocks) covering identity assignment, heartbeat, malformed-payload
+      rejection, and rate limiting. 13 tests total, all green.
       → Verified: server + web run together; polling handshake correctly 400s,
-        confirming websocket-only enforcement.
+      confirming websocket-only enforcement.
       → STILL UNVERIFIED IN A BROWSER (no browser tooling): the React wiring of
-        ConnectionBadge. Server half is proven by tests.
-- [ ] 1.6 Docker compose (Postgres + Redis) + Prisma schema v1 — *written, optional in dev*
-- [ ] 1.7 CI — lint + typecheck + test
+      ConnectionBadge. Server half is proven by tests.
+- [x] 1.6 Docker compose (Postgres + Redis) + Prisma schema v1 — _written, optional in dev_
+      → `docker/docker-compose.yml`: Postgres 16 + Redis 7 only. The app runs on the
+      host via `pnpm dev` — a bind-mounted Node container has slow file watching
+      and worse debugging on Windows/macOS.
+      → Redis persistence deliberately DISABLED (`--save '' --appendonly no`): it
+      holds queues/presence/adapter state, all reconstructible. An fsync stall
+      would add latency to matchmaking; losing it on restart costs one re-queue.
+      → Postgres locale pinned to C so `ORDER BY` on names matches across machines.
+      → `apps/server/prisma/schema.prisma` — 18 models. Two rules drive it:
+      (1) a guest is a first-class player — `MatchPlayer` has optional userId AND
+      guestId with denormalised nickname/characterSlug, so a guest's match history
+      survives them and is claimable on registration via `GuestSession.claimedByUserId`;
+      (2) read-heavy data is denormalised — `UserStats` makes a profile one row read,
+      `LeaderboardEntry` is materialised, NOT a view over MatchPlayer (that query
+      gets slower exactly as the game gets more popular).
+      → Accuracy stored as basis points (int), not float — exact aggregation.
+      → `prisma validate` passes. `@prisma/client` deliberately NOT yet a dependency;
+      added in Phase 4 when something actually queries.
+      → DEFERRED: app Dockerfiles + prod compose profile → Phase 5.9 with the
+      deployment guide. Maintaining them through 4 phases of churn buys nothing now.
+- [x] 1.7 CI — lint + typecheck + test
+      → `.github/workflows/ci.yml`: format:check → lint → typecheck → test → build →
+      prisma validate. Concurrency group cancels superseded runs. pnpm version comes
+      from `packageManager` so CI and local can't drift.
+      → Whole sequence was executed locally and passes end to end.
+      → `.prettierignore` excludes `*.prisma` (Prisma has its own formatter and the
+      two fight); repo formatted with `pnpm format`.
+
+**→ PHASE 1 COMPLETE. Next session starts at 2.1.**
+Before building on it, someone with a browser should run `pnpm dev` and eyeball
+http://localhost:5173 — the design system (1.4) and ConnectionBadge (1.5) are
+compile-verified and test-verified but never actually looked at.
 
 ### Phase 2 — Getting Two Humans Into A Fight
+
 - [ ] 2.1 Landing page (hero, nav, footer, ad slot)
 - [ ] 2.2 Guest identity (generated names, editable, signed token)
 - [ ] 2.3 Matchmaking queue + "Searching…" screen
@@ -86,6 +127,7 @@ picked up cold and executed without re-deriving decisions.
 - [ ] 2.6 Host settings panel + 3-2-1-FIGHT countdown
 
 ### Phase 3 — The Game
+
 - [ ] 3.1 `packages/engine` — combat math + unit tests (§5.2)
 - [ ] 3.2 InputEngine (§4)
 - [ ] 3.3 Server MatchEngine — tick loop, validation, sentence streaming, batching
@@ -99,6 +141,7 @@ picked up cold and executed without re-deriving decisions.
 - [ ] 3.11 **GATE: 20 internal playtest matches. Tune §5.2 before Phase 4.**
 
 ### Phase 4 — Progression
+
 - [ ] 4.1 Auth + guest→user upgrade
 - [ ] 4.2 Profile + stats pipeline + XP/levels
 - [ ] 4.3 Achievements engine
@@ -106,6 +149,7 @@ picked up cold and executed without re-deriving decisions.
 - [ ] 4.5 Friends + match history
 
 ### Phase 5 — Production Polish
+
 - [ ] 5.1 Character spritesheets swapped in
 - [ ] 5.2 Full arena set (weather, lighting, reactive events)
 - [ ] 5.3 Admin panel
@@ -117,10 +161,11 @@ picked up cold and executed without re-deriving decisions.
 - [ ] 5.9 Docs
 
 ### Environment notes (as of setup)
+
 - Node 24.12.0, npm 11.10.0, git 2.45.1. Windows 11.
 - pnpm via `corepack enable` (no global install).
 - **Docker not installed.** Compose files are written but Postgres/Redis are
-  *optional in dev* — server runs in `PERSISTENCE=none` mode. Phases 2 and 3
+  _optional in dev_ — server runs in `PERSISTENCE=none` mode. Phases 2 and 3
   need no database. Install Docker Desktop before Phase 4.
 
 ---
@@ -132,14 +177,14 @@ to watch?** If the honest answer is "it makes typing more measurable" — cut it
 
 Concrete consequences of that rule, decided up front:
 
-| Temptation | Decision |
-|---|---|
-| Show WPM live during combat | **No.** WPM is a post-match stat. During combat the player sees HP, combo, ultimate charge. |
-| Show accuracy % live | **No.** Accuracy is expressed as *combo surviving or breaking*. |
-| Big centered text box | **No.** Text is a thin band low on screen; the fighters own the frame. |
-| Caret / cursor / underline styling | Minimal. The feedback is the *character on screen swinging a sword*. |
-| Progress bar of sentence completion | **No.** Progress is expressed as the opponent's HP dropping. |
-| Countdown timer on the match | **No.** The match ends by KO. (Sudden-death ramp instead — see §5.4.) |
+| Temptation                          | Decision                                                                                    |
+| ----------------------------------- | ------------------------------------------------------------------------------------------- |
+| Show WPM live during combat         | **No.** WPM is a post-match stat. During combat the player sees HP, combo, ultimate charge. |
+| Show accuracy % live                | **No.** Accuracy is expressed as _combo surviving or breaking_.                             |
+| Big centered text box               | **No.** Text is a thin band low on screen; the fighters own the frame.                      |
+| Caret / cursor / underline styling  | Minimal. The feedback is the _character on screen swinging a sword_.                        |
+| Progress bar of sentence completion | **No.** Progress is expressed as the opponent's HP dropping.                                |
+| Countdown timer on the match        | **No.** The match ends by KO. (Sudden-death ramp instead — see §5.4.)                       |
 
 A spectator with the text band cropped out must still be able to tell who is winning.
 That is the acceptance test for the whole visual layer.
@@ -179,7 +224,7 @@ That is the acceptance test for the whole visual layer.
 ### 1.1 Load-bearing decisions
 
 **D1 — Authoritative server, optimistic client animation.**
-The client fires the attack animation the instant *it* detects a correct word.
+The client fires the attack animation the instant _it_ detects a correct word.
 The server independently validates and computes damage, then broadcasts the HP
 delta. HP bars are server-driven; animations are client-predicted. This is what
 makes it feel instant while staying cheat-resistant. Mispredictions (server
@@ -190,7 +235,7 @@ combat rather than a glitch.
 A match is a 60Hz-ish stateful object with sub-100ms latency requirements.
 Round-tripping to Redis per keystroke is wasteful. Both sockets of a match are
 pinned to one process (matchmaking assigns the match to the process that will
-own it; the Redis adapter routes). Redis holds only *where* a match lives.
+own it; the Redis adapter routes). Redis holds only _where_ a match lives.
 This is the difference between "scales to thousands" and "dies at 200".
 
 **D3 — React never re-renders on keystrokes.**
@@ -333,6 +378,7 @@ Text is pre-split server-side into words. State per word: `pending | active | co
 
 Every commit sends: `wordIndex`, `charTimings[]` (deltas, ms), `dirty` flag.
 Server rejects/flags on:
+
 - inter-key delta < 8ms sustained (superhuman),
 - zero-variance timing (bot-perfect rhythm — check stddev floor),
 - word committed before the server sent that sentence,
@@ -373,11 +419,13 @@ damage = round(baseDamage * comboMultiplier * tempoBonus * (crit ? 1.8 : 1))
 ```
 
 **Ultimate:**
+
 ```
 charge += 4 + combo * 0.35   per correct word   (cap 100)
 charge -= 15                 on a miss          (floor 0)
 ultimateDamage = 140 + 2.2 * combo   (crit cannot apply)
 ```
+
 Ultimate consumes the charge and fires on the **next correctly typed word**,
 which is rendered gold and slightly longer. No extra keybind — typing remains
 the only input.
@@ -390,7 +438,7 @@ a comeback stays possible until roughly 200 HP.
 ### 5.3 Why mistakes cost combo and not HP
 
 Self-damage on typos makes a bad player's match end faster, which is exactly
-backwards — the losing player should get *more* game, not less. Combo loss is a
+backwards — the losing player should get _more_ game, not less. Combo loss is a
 sharp, self-inflicted, comprehensible penalty that expresses itself as
 "my damage went from 54 to 18", and it lets skill compound without punishing
 learning.
@@ -405,7 +453,7 @@ Matches always end, and they end climactically rather than on a timer.
 
 - **Hit stop:** 60–90ms freeze on impact, longer (140ms) on crit and ultimate.
   This single detail is most of the difference between "web animation" and "game".
-- **Screen shake:** proportional to damage, capped, and *disableable* in settings.
+- **Screen shake:** proportional to damage, capped, and _disableable_ in settings.
 - **Damage numbers:** pop, arc, fade. Crits are bigger and a different color.
 - **Chip vs. real damage:** HP bar has a fast red layer and a slow white "ghost"
   layer that drains behind it. Legible at a glance from across a room.
@@ -419,11 +467,11 @@ Matches always end, and they end climactically rather than on a timer.
 
 ### 6.1 Split of responsibility
 
-| Layer | Owns |
-|---|---|
-| Phaser canvas (z-0) | arena parallax, fighters, FX, damage numbers, camera, hit stop |
+| Layer                | Owns                                                           |
+| -------------------- | -------------------------------------------------------------- |
+| Phaser canvas (z-0)  | arena parallax, fighters, FX, damage numbers, camera, hit stop |
 | React overlay (z-10) | HP bars, combo counter, ultimate meter, name plates, text band |
-| React (full screen) | everything outside `PHASE_COMBAT` |
+| React (full screen)  | everything outside `PHASE_COMBAT`                              |
 
 They communicate exclusively through the event bus (`game/bus.ts`). Phaser never
 imports React; React never reaches into Phaser scene internals.
@@ -445,7 +493,7 @@ pretending otherwise stalls the project. Staging:
    `entities/Fighter.ts` exposes `play(anim)`; the renderer behind it is
    swappable without touching game logic.
 
-This ordering means the game is *fun* before it is *pretty*, which is the only
+This ordering means the game is _fun_ before it is _pretty_, which is the only
 order that works.
 
 ### 6.4 Performance budget
@@ -467,6 +515,7 @@ it degrades combat feel to the point of not being worth supporting).
 ### 7.1 Events (typed in `packages/shared`)
 
 **Client → Server**
+
 ```
 guest:init          { nickname? }
 mm:join             { mode }
@@ -483,6 +532,7 @@ match:rematch       {}
 ```
 
 **Server → Client**
+
 ```
 room:state          { room }             // full snapshot on change
 match:start         { matchId, seed, config, fighters, arena, firstSentence }
@@ -558,7 +608,9 @@ Each phase ends in something runnable and demoable. No phase is "infrastructure
 only" beyond Phase 1.
 
 ### Phase 1 — Foundation
-*Exit: `docker compose up` gives a running app; a socket round-trip is visible.*
+
+_Exit: `docker compose up` gives a running app; a socket round-trip is visible._
+
 - pnpm workspaces, Turborepo, shared tsconfig/eslint/prettier presets.
 - Vite + React + Tailwind app shell with dark game theme + design tokens.
 - Express + Socket.io server, Zod-validated env config, Pino logging.
@@ -567,7 +619,9 @@ only" beyond Phase 1.
 - Health checks, graceful shutdown, CI running lint + typecheck + tests.
 
 ### Phase 2 — Getting Two Humans Into A Fight
-*Exit: two browsers, one click each, both land in a synced lobby and count down.*
+
+_Exit: two browsers, one click each, both land in a synced lobby and count down._
+
 - Landing page (hero, animated background, Play Now, nav, footer, ad slot).
 - Guest identity: generated names (`RapidWolf`), editable, persisted to
   localStorage + signed server token.
@@ -578,7 +632,9 @@ only" beyond Phase 1.
   full host settings panel, 3-2-1-FIGHT countdown.
 
 ### Phase 3 — The Game
-*Exit: a full match is playable end to end and is actually fun. Playtest gate.*
+
+_Exit: a full match is playable end to end and is actually fun. Playtest gate._
+
 - `packages/engine`: combat math, fully unit tested against §5.2.
 - InputEngine per §4.
 - Server MatchEngine: tick loop, validation, sentence streaming, batching,
@@ -592,7 +648,9 @@ only" beyond Phase 1.
 - **Gate: play 20 matches internally. If it isn't fun, tune §5.2 before Phase 4.**
 
 ### Phase 4 — Progression
-*Exit: registered users have a reason to come back tomorrow.*
+
+_Exit: registered users have a reason to come back tomorrow._
+
 - Auth (email+password, argon2, JWT access + refresh), guest→user upgrade that
   preserves the just-finished match.
 - Post-match "Save your progress" prompt.
@@ -602,7 +660,9 @@ only" beyond Phase 1.
 - Friends, match history.
 
 ### Phase 5 — Production Polish
-*Exit: shippable.*
+
+_Exit: shippable._
+
 - Real character spritesheets swapped in behind the `Fighter` interface.
 - Full arena set with weather, lighting, combat-reactive events.
 - Admin panel: users, content, ads, reports, announcements.
@@ -617,6 +677,7 @@ only" beyond Phase 1.
   Docker, developer guide.
 
 ### Phase 6+ — Expansion (architected for, not built)
+
 2v2 / 4v4 / FFA / 1v4 boss, tournaments, ranked MMR, training mode vs. bots,
 clans, mobile layout, Electron, Steam.
 
@@ -640,15 +701,15 @@ clans, mobile layout, Electron, Steam.
 
 ## 11. Risks & Mitigations
 
-| Risk | Mitigation |
-|---|---|
-| It ends up feeling like a typing test with decoration | Phase 3 playtest gate; §0 rules enforced in review |
-| Art scope stalls the project | Procedural fighters first, sprites swapped later behind an interface |
-| React rerenders tank framerate | Event-bus architecture + dev render counter + CI perf test |
-| Matches desync between clients | Pure engine + seeded RNG + determinism test |
-| Fast legitimate typists get flagged as cheaters | Flag-and-review, never auto-disconnect |
-| Redis becomes the match bottleneck | Match state stays in-process (D2); Redis is discovery only |
-| Leaderboard queries melt under load | Materialized + Redis-cached, never live |
+| Risk                                                  | Mitigation                                                           |
+| ----------------------------------------------------- | -------------------------------------------------------------------- |
+| It ends up feeling like a typing test with decoration | Phase 3 playtest gate; §0 rules enforced in review                   |
+| Art scope stalls the project                          | Procedural fighters first, sprites swapped later behind an interface |
+| React rerenders tank framerate                        | Event-bus architecture + dev render counter + CI perf test           |
+| Matches desync between clients                        | Pure engine + seeded RNG + determinism test                          |
+| Fast legitimate typists get flagged as cheaters       | Flag-and-review, never auto-disconnect                               |
+| Redis becomes the match bottleneck                    | Match state stays in-process (D2); Redis is discovery only           |
+| Leaderboard queries melt under load                   | Materialized + Redis-cached, never live                              |
 
 ---
 
@@ -663,4 +724,7 @@ clans, mobile layout, Electron, Steam.
 - Someone plays a fifth match without being asked to.
 
 That last one is the real test.
+
+```
+
 ```

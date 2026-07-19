@@ -38,8 +38,8 @@ export function LandingScreen() {
           className="animate-rise mt-6 max-w-lg text-balance text-lg text-ink-dim"
           style={{ animationDelay: '120ms' }}
         >
-          Your keyboard is the weapon. Type clean to land combos, break your
-          opponent&apos;s rhythm, and finish them with an Ultimate.
+          Your keyboard is the weapon. Type clean to land combos, break your opponent&apos;s rhythm,
+          and finish them with an Ultimate.
         </p>
 
         <div
@@ -54,9 +54,7 @@ export function LandingScreen() {
           </Button>
         </div>
 
-        <p className="mt-5 text-xs uppercase tracking-[0.2em] text-ink-faint">
-          No account needed
-        </p>
+        <p className="mt-5 text-xs uppercase tracking-[0.2em] text-ink-faint">No account needed</p>
       </div>
 
       {/* Design-system proof: the rivalry palette applied to two fighter cards. */}

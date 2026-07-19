@@ -2,7 +2,11 @@ packages:
   - 'apps/*'
   - 'packages/*'
 
-# pnpm requires explicit opt-in for postinstall scripts. esbuild's postinstall
-# fetches its platform-native binary — without it, tsup and vitest cannot run.
+# pnpm requires explicit opt-in for postinstall scripts. Each of these fetches a
+# platform-native binary that its tooling cannot run without:
+#   esbuild          — required by tsup and vitest
+#   prisma/@prisma/engines — the query engine used by the CLI and client
 allowBuilds:
+  '@prisma/engines': true
   esbuild: true
+  prisma: true

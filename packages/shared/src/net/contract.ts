@@ -51,7 +51,10 @@ export interface ClientToServerEvents {
   'room:start': (ack: (r: Ack) => void) => void;
 
   'match:word': (p: MatchWordPayload) => void;
-  'match:heartbeat': (p: MatchHeartbeatPayload, ack: (r: Ack<{ serverTime: number }>) => void) => void;
+  'match:heartbeat': (
+    p: MatchHeartbeatPayload,
+    ack: (r: Ack<{ serverTime: number }>) => void,
+  ) => void;
   'match:rematch': (ack: (r: Ack) => void) => void;
   'match:forfeit': (ack: (r: Ack) => void) => void;
 }

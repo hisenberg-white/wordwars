@@ -1,0 +1,508 @@
+// WordWars database schema (v1).
+//
+// Not required for phases 1-3 — the server runs with PERSISTENCE=none and keeps
+// everything in memory. This schema exists now so the shape of progression is
+// decided before gameplay code starts assuming things about it.
+//
+// Two rules run through the whole design:
+//
+//   1. A guest is a first-class player. Match history, stats and results must
+//      survive a player who never registers, and must be claimable if they
+//      register later. Nothing may require a User row to record a fight.
+//   2. Anything a player reads often is denormalised. Profiles and leaderboards
+//      are read constantly and written rarely; recomputing them from MatchPlayer
+//      rows on every request is the query that eventually takes the site down.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+enum Role {
+  PLAYER
+  MODERATOR
+  ADMIN
+}
+
+model User {
+  id           String  @id @default(cuid())
+  email        String? @unique
+  username     String  @unique
+  passwordHash String?
+  role         Role    @default(PLAYER)
+
+  avatarUrl   String?
+  countryCode String? @db.VarChar(2)
+
+  xp    Int @default(0)
+  level Int @default(1)
+
+  isBanned  Boolean   @default(false)
+  bannedAt  DateTime?
+  banReason String?
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  lastSeenAt DateTime @default(now())
+
+  stats           UserStats?
+  matchPlayers    MatchPlayer[]
+  ownerships      Ownership[]
+  achievements    UserAchievement[]
+  seasonRanks     SeasonRank[]
+  leaderboard     LeaderboardEntry[]
+  hostedRooms     Room[]             @relation("RoomHost")
+  friendshipsSent Friendship[]       @relation("FriendshipRequester")
+  friendshipsRecv Friendship[]       @relation("FriendshipAddressee")
+  reportsMade     Report[]           @relation("Reporter")
+  reportsAgainst  Report[]           @relation("ReportTarget")
+
+  // Leaderboard and admin listings page by recency and level.
+  @@index([level, xp])
+  @@index([countryCode])
+  @@index([lastSeenAt])
+}
+
+// A guest identity. Ephemeral, but real enough to own a match record.
+model GuestSession {
+  id        String   @id @default(cuid())
+  nickname  String
+  // Hash, not the token itself — a leaked table should not hand over sessions.
+  tokenHash String   @unique
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  // Set when a guest registers, so their prior matches can be claimed.
+  claimedByUserId String?
+
+  matchPlayers MatchPlayer[]
+
+  @@index([expiresAt])
+  @@index([claimedByUserId])
+}
+
+// ---------------------------------------------------------------------------
+// Cosmetic content
+//
+// HARD RULE (plan §1.1 D5): cosmetic forever. No column in this section may
+// ever influence combat. A `damageBonus` here means the game is pay-to-win.
+// ---------------------------------------------------------------------------
+
+enum Rarity {
+  COMMON
+  RARE
+  EPIC
+  LEGENDARY
+}
+
+model Character {
+  id        String  @id @default(cuid())
+  slug      String  @unique
+  name      String
+  rarity    Rarity  @default(COMMON)
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+
+  // Sprite atlas / animation manifest. Kept as JSON so adding an animation
+  // does not require a migration.
+  manifest Json
+
+  skins        Skin[]
+  matchPlayers MatchPlayer[]
+  favouredBy   UserStats[]   @relation("FavouriteCharacter")
+
+  @@index([isActive, sortOrder])
+}
+
+model Skin {
+  id          String  @id @default(cuid())
+  characterId String
+  slug        String
+  name        String
+  rarity      Rarity  @default(COMMON)
+  manifest    Json
+  isActive    Boolean @default(true)
+
+  character Character @relation(fields: [characterId], references: [id], onDelete: Cascade)
+
+  @@unique([characterId, slug])
+}
+
+model Arena {
+  id        String  @id @default(cuid())
+  slug      String  @unique
+  name      String
+  theme     String
+  isActive  Boolean @default(true)
+  sortOrder Int     @default(0)
+  manifest  Json
+
+  matches    Match[]
+  favouredBy UserStats[] @relation("FavouriteArena")
+
+  @@index([isActive, sortOrder])
+}
+
+enum ItemType {
+  CHARACTER
+  SKIN
+  EMOTE
+  TITLE
+  FRAME
+}
+
+model Ownership {
+  id         String   @id @default(cuid())
+  userId     String
+  itemType   ItemType
+  itemId     String
+  acquiredAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, itemType, itemId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Rooms and matches
+// ---------------------------------------------------------------------------
+
+enum GameMode {
+  ONE_V_ONE
+  TWO_V_TWO
+  FOUR_V_FOUR
+  FREE_FOR_ALL
+  BOSS
+}
+
+enum MatchEndReason {
+  KNOCKOUT
+  FORFEIT
+  DISCONNECT
+  ABORTED
+}
+
+// Rooms are live objects in Redis; this table is only for persistent/named
+// rooms and post-hoc analytics. A transient matchmade room never lands here.
+model Room {
+  id           String    @id @default(cuid())
+  code         String    @unique @db.VarChar(6)
+  hostUserId   String?
+  settings     Json
+  isPublic     Boolean   @default(false)
+  passwordHash String?
+  createdAt    DateTime  @default(now())
+  closedAt     DateTime?
+
+  host    User?   @relation("RoomHost", fields: [hostUserId], references: [id], onDelete: SetNull)
+  matches Match[]
+
+  @@index([isPublic, createdAt])
+}
+
+model Match {
+  id         String   @id @default(cuid())
+  roomId     String?
+  arenaId    String?
+  mode       GameMode @default(ONE_V_ONE)
+  difficulty String   @default("normal")
+  language   String   @default("en")
+  roundCount Int      @default(1)
+  isRanked   Boolean  @default(false)
+  seasonId   String?
+
+  startedAt  DateTime  @default(now())
+  endedAt    DateTime?
+  durationMs Int?
+
+  winnerPlayerId String?
+  endReason      MatchEndReason?
+
+  // Set when anti-cheat heuristics tripped (plan §4.3). Flagged matches are
+  // kept and reviewed asynchronously — never auto-punished, because false
+  // positives on genuinely fast typists are worse than a slow ban pipeline.
+  flagged    Boolean @default(false)
+  flagReason String?
+
+  room    Room?         @relation(fields: [roomId], references: [id], onDelete: SetNull)
+  arena   Arena?        @relation(fields: [arenaId], references: [id], onDelete: SetNull)
+  season  Season?       @relation(fields: [seasonId], references: [id], onDelete: SetNull)
+  players MatchPlayer[]
+
+  @@index([startedAt])
+  @@index([isRanked, startedAt])
+  @@index([flagged])
+}
+
+// One row per participant.
+//
+// `userId` and `guestId` are both optional and mutually exclusive — this is
+// what lets a guest's match survive them. `nickname` and `characterSlug` are
+// copied in rather than joined, so history still reads correctly after a rename
+// or after a guest session is garbage-collected.
+model MatchPlayer {
+  id      String  @id @default(cuid())
+  matchId String
+  userId  String?
+  guestId String?
+
+  nickname      String
+  characterId   String?
+  characterSlug String
+  side          String  @db.VarChar(8)
+  placement     Int     @default(0)
+
+  hpRemaining   Int @default(0)
+  damageDealt   Int @default(0)
+  damageTaken   Int @default(0)
+  wordsTyped    Int @default(0)
+  wordsMissed   Int @default(0)
+  maxCombo      Int @default(0)
+  ultimatesUsed Int @default(0)
+
+  // Stored as basis points (0-10000) rather than a float: integers compare and
+  // aggregate exactly, and 0.01% precision is far beyond what we display.
+  accuracyBp Int @default(0)
+  avgWpm     Int @default(0)
+  peakWpm    Int @default(0)
+
+  isWinner Boolean @default(false)
+  xpGained Int     @default(0)
+
+  match     Match         @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user      User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  guest     GuestSession? @relation(fields: [guestId], references: [id], onDelete: SetNull)
+  character Character?    @relation(fields: [characterId], references: [id], onDelete: SetNull)
+
+  @@index([matchId])
+  @@index([userId])
+  @@index([guestId])
+}
+
+// ---------------------------------------------------------------------------
+// Progression
+// ---------------------------------------------------------------------------
+
+// Denormalised aggregate, updated on match end. A profile page is one row read.
+model UserStats {
+  userId String @id
+
+  matches Int @default(0)
+  wins    Int @default(0)
+  losses  Int @default(0)
+  draws   Int @default(0)
+
+  currentStreak Int @default(0)
+  bestStreak    Int @default(0)
+
+  totalWords  Int    @default(0)
+  totalTimeMs BigInt @default(0)
+  totalDamage BigInt @default(0)
+
+  bestCombo     Int @default(0)
+  bestWpm       Int @default(0)
+  // Rolling averages, basis points where applicable.
+  avgWpm        Int @default(0)
+  avgAccuracyBp Int @default(0)
+
+  favouriteCharacterId String?
+  favouriteArenaId     String?
+
+  updatedAt DateTime @updatedAt
+
+  user               User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  favouriteCharacter Character? @relation("FavouriteCharacter", fields: [favouriteCharacterId], references: [id], onDelete: SetNull)
+  favouriteArena     Arena?     @relation("FavouriteArena", fields: [favouriteArenaId], references: [id], onDelete: SetNull)
+
+  @@index([wins])
+  @@index([bestWpm])
+}
+
+model Achievement {
+  id          String  @id @default(cuid())
+  slug        String  @unique
+  name        String
+  description String
+  icon        String
+  // Evaluated server-side on match end. JSON so new achievement shapes do not
+  // require a migration.
+  criteria    Json
+  xpReward    Int     @default(0)
+  isActive    Boolean @default(true)
+  sortOrder   Int     @default(0)
+
+  unlocks UserAchievement[]
+}
+
+model UserAchievement {
+  userId        String
+  achievementId String
+  // Progress toward the threshold, so partial progress can be shown rather
+  // than a binary locked/unlocked.
+  progress      Int       @default(0)
+  unlockedAt    DateTime?
+
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievement Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  @@id([userId, achievementId])
+  @@index([userId, unlockedAt])
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  BLOCKED
+}
+
+model Friendship {
+  id          String           @id @default(cuid())
+  requesterId String
+  addresseeId String
+  status      FriendshipStatus @default(PENDING)
+  createdAt   DateTime         @default(now())
+  respondedAt DateTime?
+
+  requester User @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee User @relation("FriendshipAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId, status])
+}
+
+// ---------------------------------------------------------------------------
+// Seasons and leaderboards
+// ---------------------------------------------------------------------------
+
+model Season {
+  id       String   @id @default(cuid())
+  name     String
+  startsAt DateTime
+  endsAt   DateTime
+  isActive Boolean  @default(false)
+
+  ranks   SeasonRank[]
+  matches Match[]
+
+  @@index([isActive])
+}
+
+model SeasonRank {
+  seasonId String
+  userId   String
+
+  mmr    Int    @default(1000)
+  tier   String @default("bronze")
+  wins   Int    @default(0)
+  losses Int    @default(0)
+
+  updatedAt DateTime @updatedAt
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([seasonId, userId])
+  @@index([seasonId, mmr])
+}
+
+enum LeaderboardScope {
+  GLOBAL
+  COUNTRY
+  FRIENDS
+}
+
+enum LeaderboardPeriod {
+  DAILY
+  WEEKLY
+  MONTHLY
+  SEASON
+  ALL_TIME
+}
+
+// Materialised leaderboard rows, rebuilt by a scheduled job and cached in Redis.
+//
+// Deliberately NOT a view over MatchPlayer. Ranking millions of match rows on
+// every page load is the query that takes the site down under load, and it gets
+// slower precisely as the game gets more popular (plan §11).
+model LeaderboardEntry {
+  id     String            @id @default(cuid())
+  scope  LeaderboardScope
+  period LeaderboardPeriod
+  // Discriminator for scoped boards, e.g. the country code. Empty for GLOBAL.
+  bucket String            @default("")
+
+  userId  String
+  rank    Int
+  score   Int
+  matches Int    @default(0)
+  wins    Int    @default(0)
+  avgWpm  Int    @default(0)
+
+  computedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([scope, period, bucket, userId])
+  @@index([scope, period, bucket, rank])
+}
+
+// ---------------------------------------------------------------------------
+// Operations
+// ---------------------------------------------------------------------------
+
+model AdSlot {
+  id        String    @id @default(cuid())
+  placement String
+  html      String
+  isActive  Boolean   @default(false)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([placement, isActive])
+}
+
+enum ReportStatus {
+  OPEN
+  REVIEWING
+  RESOLVED
+  DISMISSED
+}
+
+model Report {
+  id         String       @id @default(cuid())
+  reporterId String?
+  targetId   String?
+  matchId    String?
+  reason     String
+  detail     String?
+  status     ReportStatus @default(OPEN)
+  createdAt  DateTime     @default(now())
+  resolvedAt DateTime?
+
+  reporter User? @relation("Reporter", fields: [reporterId], references: [id], onDelete: SetNull)
+  target   User? @relation("ReportTarget", fields: [targetId], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+}
+
+model Announcement {
+  id        String    @id @default(cuid())
+  title     String
+  body      String
+  isActive  Boolean   @default(false)
+  startsAt  DateTime?
+  endsAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([isActive])
+}

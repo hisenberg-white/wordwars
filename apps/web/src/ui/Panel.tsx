@@ -14,7 +14,13 @@ const SIDE_ACCENT = {
 } as const;
 
 /** Angular surface container. The building block for lobbies, cards and HUD. */
-export function Panel({ children, side = null, interactive = false, className, ...rest }: PanelProps) {
+export function Panel({
+  children,
+  side = null,
+  interactive = false,
+  className,
+  ...rest
+}: PanelProps) {
   return (
     <div
       className={cn(

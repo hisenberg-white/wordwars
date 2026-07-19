@@ -9,9 +9,7 @@ import { z } from 'zod';
  * dereference under load an hour later.
  */
 
-const booleanish = z
-  .enum(['true', 'false', '1', '0'])
-  .transform((v) => v === 'true' || v === '1');
+const booleanish = z.enum(['true', 'false', '1', '0']).transform((v) => v === 'true' || v === '1');
 
 const schema = z
   .object({
@@ -41,7 +39,11 @@ const schema = z
 
     /** Signs guest session tokens. Must be set in production. */
     SESSION_SECRET: z.string().min(16).default('dev-only-insecure-secret-change-me'),
-    SESSION_TTL_HOURS: z.coerce.number().int().positive().default(24 * 30),
+    SESSION_TTL_HOURS: z.coerce
+      .number()
+      .int()
+      .positive()
+      .default(24 * 30),
   })
   .superRefine((env, ctx) => {
     if (env.PERSISTENCE === 'full') {

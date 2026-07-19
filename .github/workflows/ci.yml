@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+# A new push to the same branch makes the previous run irrelevant. Cancelling
+# keeps queue time down and stops two runs racing to report on one branch.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Read by the Prisma CLI during schema validation. No database is contacted —
+  # `prisma validate` only parses — but the CLI insists the variable exists.
+  DATABASE_URL: postgresql://wordwars:wordwars@localhost:5432/wordwars
+
+jobs:
+  verify:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Reads the pinned version from `packageManager` in package.json, so CI
+      # and local development can never drift onto different pnpm releases.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check formatting
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      - name: Validate Prisma schema
+        run: pnpm --filter @wordwars/server db:validate

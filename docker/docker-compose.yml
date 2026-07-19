@@ -1,0 +1,58 @@
+# WordWars development infrastructure.
+#
+# Brings up ONLY the stateful dependencies — Postgres and Redis. The app itself
+# runs on the host via `pnpm dev`, because a bind-mounted Node container on
+# Windows/macOS has slow file watching and a worse debugging story than just
+# running the process directly.
+#
+#   docker compose -f docker/docker-compose.yml up -d
+#
+# Not required for phases 1-3. The server runs entirely in memory with
+# PERSISTENCE=none; guest play, matchmaking, rooms and combat all work without
+# any of this. Bring it up when you reach phase 4 (progression).
+
+name: wordwars
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wordwars-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-wordwars}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-wordwars}
+      POSTGRES_DB: ${POSTGRES_DB:-wordwars}
+      # Postgres defaults to the host locale for collation; pinning it keeps
+      # ORDER BY on leaderboard names identical across dev machines and prod.
+      POSTGRES_INITDB_ARGS: '--locale=C --encoding=UTF8'
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-wordwars} -d ${POSTGRES_DB:-wordwars}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    container_name: wordwars-redis
+    restart: unless-stopped
+    # Redis holds matchmaking queues, room discovery, presence and the
+    # Socket.io adapter — all reconstructible state. Persistence is disabled
+    # deliberately: an fsync stall would add latency to the matchmaking path,
+    # and losing this data on restart costs nothing but a re-queue.
+    command: redis-server --save '' --appendonly no --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres-data:
+    name: wordwars-postgres-data
