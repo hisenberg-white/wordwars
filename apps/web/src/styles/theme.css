@@ -1,0 +1,112 @@
+/**
+ * WordWars design tokens.
+ *
+ * The organising idea: this is a 1v1 fighting game, so the palette is built
+ * around TWO OPPOSING SIDES. Crimson is you, cyan is them. That rivalry runs
+ * through everything downstream — HP bars, name plates, damage numbers, the
+ * typing band, the arena lighting. A UI element that belongs to a player is
+ * never "primary coloured"; it is P1 or P2 coloured.
+ *
+ * Everything else is deliberately desaturated so those two colours (and gold,
+ * reserved exclusively for the Ultimate) carry all the signal. If a new accent
+ * colour is ever added here, it dilutes the ones that matter.
+ */
+
+@theme {
+  /* ---- Base surfaces -------------------------------------------------
+   * Cool near-black with a violet cast, not neutral grey. Neutral grey reads
+   * as "corporate dark mode"; the violet tilt reads as arcade.
+   */
+  --color-void: #06060b;
+  --color-abyss: #0a0a13;
+  --color-surface: #10101d;
+  --color-raised: #191929;
+  --color-elevated: #23233a;
+  --color-line: #2c2c47;
+  --color-line-bright: #3d3d5f;
+
+  /* ---- Text ---------------------------------------------------------- */
+  --color-ink: #ecedf7;
+  --color-ink-dim: #9b9bba;
+  --color-ink-faint: #63637f;
+
+  /* ---- The rivalry --------------------------------------------------- */
+  --color-p1: #ff2f57;
+  --color-p1-bright: #ff6b85;
+  --color-p1-deep: #a30f2c;
+  --color-p2: #00e0ff;
+  --color-p2-bright: #7af0ff;
+  --color-p2-deep: #0080a3;
+
+  /* ---- Reserved meanings ---------------------------------------------
+   * Gold means Ultimate and nothing else. The moment gold is used for a
+   * generic highlight, the Ultimate stops feeling special.
+   */
+  --color-ultimate: #ffc53d;
+  --color-ultimate-bright: #ffe08a;
+  --color-crit: #ff8a1f;
+  --color-success: #3ddc97;
+  --color-danger: #ff2f57;
+
+  /* ---- Typography -----------------------------------------------------
+   * Chakra Petch is angular and sporty — it reads as esports rather than
+   * office software. Inter handles anything requiring sustained reading.
+   * JetBrains Mono is reserved for the typing band, where a fixed advance
+   * width keeps the text from reflowing as the player types.
+   */
+  --font-display: 'Chakra Petch', system-ui, sans-serif;
+  --font-sans: 'Inter Variable', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, monospace;
+
+  /* ---- Motion ---------------------------------------------------------
+   * Fast and snappy. Anything above ~250ms in the UI feels sluggish next to
+   * combat that responds in single-digit frames.
+   */
+  --ease-snap: cubic-bezier(0.2, 0.9, 0.3, 1);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+
+  --animate-pulse-glow: pulse-glow 2.4s ease-in-out infinite;
+  --animate-float: float 6s ease-in-out infinite;
+  --animate-scan: scan 8s linear infinite;
+  --animate-rise: rise 0.5s var(--ease-out-quint) both;
+}
+
+@keyframes pulse-glow {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes float {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0);
+  }
+  50% {
+    transform: translate3d(0, -14px, 0);
+  }
+}
+
+@keyframes scan {
+  from {
+    transform: translate3d(0, -100%, 0);
+  }
+  to {
+    transform: translate3d(0, 100%, 0);
+  }
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 14px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}

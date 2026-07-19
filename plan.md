@@ -38,7 +38,24 @@ picked up cold and executed without re-deriving decisions.
         handler runs, so `SocketData` is never partially populated. Real guest
         naming + token reclamation replaces it in 2.2.
       → `PERSISTENCE=none` is the documented no-Docker dev mode.
-- [ ] 1.4 Web — Vite + React + Tailwind shell with dark game theme + design tokens
+- [x] 1.4 Web — Vite + React + Tailwind shell with dark game theme + design tokens
+      → `apps/web`: Vite 6, React 19, Tailwind v4 (CSS-first `@theme`), react-router,
+        self-hosted fonts (no CDN). `ui/` primitives: Button, Panel, Wordmark,
+        Backdrop, cn. Landing + 404 shells. Typecheck, lint, build all clean.
+      → **Design system decided here — everything downstream inherits it:**
+        the palette is built on the 1v1 RIVALRY. `--color-p1` crimson = you,
+        `--color-p2` cyan = them. Gold (`--color-ultimate`) is reserved for the
+        Ultimate and must never be used as a generic highlight. Angular
+        `clip-path` panels, not rounded corners — that one shape choice is what
+        separates "game" from "web app".
+      → Fonts: Chakra Petch (display/esports), Inter (reading), JetBrains Mono
+        (reserved for the typing band — fixed advance width stops reflow as the
+        player types).
+      → NOTE: React 19 rather than the plan's React 18 — current stable, and the
+        ref-as-prop change removes forwardRef boilerplate across `ui/`.
+      → NOT visually verified — no browser tooling in that session. Compilation of
+        `@theme` into real utilities was asserted by grepping the built CSS.
+        **Someone should eyeball this in a browser before Phase 2 styling builds on it.**
 - [ ] 1.5 Socket round-trip proven end to end (client connects, echoes, shows status)
 - [ ] 1.6 Docker compose (Postgres + Redis) + Prisma schema v1 — *written, optional in dev*
 - [ ] 1.7 CI — lint + typecheck + test

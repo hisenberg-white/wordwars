@@ -1,0 +1,116 @@
+@import 'tailwindcss';
+
+@import '@fontsource/chakra-petch/500.css';
+@import '@fontsource/chakra-petch/600.css';
+@import '@fontsource/chakra-petch/700.css';
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+
+@import './theme.css';
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  * {
+    border-color: var(--color-line);
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--color-void);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overscroll-behavior: none;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-display);
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  /* The game owns the arrow keys, space and backspace during combat.
+     A focus ring is still essential for keyboard navigation outside it. */
+  :focus-visible {
+    outline: 2px solid var(--color-p2);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: var(--color-p1);
+    color: white;
+  }
+
+  /* Accessibility is cheaper to honour from the start than to retrofit.
+     Screen shake and hit-stop get their own in-game toggle later (plan §5.5);
+     this covers the UI layer. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+}
+
+@layer components {
+  /**
+   * Angular corner cuts.
+   *
+   * Fighting game HUDs are built from slanted, clipped panels rather than
+   * rounded rectangles — rounded corners read as "web app", hard diagonals
+   * read as "game". This is the single highest-leverage shape decision in
+   * the whole UI.
+   */
+  .clip-panel {
+    clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+  }
+
+  .clip-tab {
+    clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+  }
+
+  .clip-notch {
+    clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+  }
+
+  /** Faint CRT scanline texture. Sells "arcade cabinet" at almost zero cost. */
+  .bg-scanlines {
+    background-image: repeating-linear-gradient(
+      0deg,
+      rgb(255 255 255 / 0.025) 0px,
+      rgb(255 255 255 / 0.025) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  }
+
+  .bg-grid {
+    background-image:
+      linear-gradient(to right, rgb(255 255 255 / 0.035) 1px, transparent 1px),
+      linear-gradient(to bottom, rgb(255 255 255 / 0.035) 1px, transparent 1px);
+    background-size: 56px 56px;
+  }
+
+  .text-glow-p1 {
+    text-shadow: 0 0 24px rgb(255 47 87 / 0.55);
+  }
+
+  .text-glow-p2 {
+    text-shadow: 0 0 24px rgb(0 224 255 / 0.55);
+  }
+}
