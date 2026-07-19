@@ -7,6 +7,8 @@ import { useIdentity, useRoom } from '@/net/useConnection';
 import { Button } from '@/ui/Button';
 import { Panel, PanelLabel } from '@/ui/Panel';
 import { cn } from '@/ui/cn';
+import { AuthDialog } from '@/features/auth/AuthDialog';
+import { useAuth } from '@/net/useConnection';
 import { StatComparison } from './StatComparison';
 
 interface ResultsScreenProps {
@@ -33,6 +35,7 @@ export function ResultsScreen({ result, fighters }: ResultsScreenProps) {
   const navigate = useNavigate();
   const { identity } = useIdentity();
   const { room } = useRoom();
+  const auth = useAuth();
   const [requested, setRequested] = useState(false);
 
   const selfId = identity?.playerId ?? null;
@@ -140,7 +143,7 @@ export function ResultsScreen({ result, fighters }: ResultsScreenProps) {
         )}
       </div>
 
-      {identity?.isGuest && <GuestPrompt />}
+      {identity?.isGuest && auth.status !== 'signed-in' && <GuestPrompt />}
     </div>
   );
 }
@@ -186,18 +189,23 @@ function FighterName({
  * most want them to press.
  */
 function GuestPrompt() {
+  const [open, setOpen] = useState(false);
+
   return (
-    <p className="animate-rise max-w-sm text-center text-xs leading-relaxed text-ink-faint">
-      Playing as a guest — your stats vanish when you close the tab.{' '}
-      <button
-        type="button"
-        disabled
-        title="Accounts arrive in phase 4"
-        className="text-p2 underline underline-offset-2 disabled:opacity-70"
-      >
-        Create a free account
-      </button>{' '}
-      to keep them.
-    </p>
+    <>
+      <p className="animate-rise max-w-sm text-center text-xs leading-relaxed text-ink-faint">
+        Playing as a guest — your stats vanish when you close the tab.{' '}
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="text-p2 underline underline-offset-2 transition-colors hover:text-p2-bright"
+        >
+          Create a free account
+        </button>{' '}
+        to keep them.
+      </p>
+
+      {open && <AuthDialog onClose={() => setOpen(false)} />}
+    </>
   );
 }

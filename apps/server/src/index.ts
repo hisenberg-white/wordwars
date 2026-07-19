@@ -2,9 +2,18 @@ import { createServer } from 'node:http';
 import { env, isDevelopment } from './config/env.js';
 import { logger } from './logger.js';
 import { createApp } from './http/app.js';
+import { createMemoryRepositories } from './db/memory.js';
 import { createGateway } from './realtime/gateway.js';
 
-const app = createApp();
+/*
+ * Persistence.
+ *
+ * `PERSISTENCE=none` uses the in-memory repositories — a real runtime, not a
+ * stub, but everything is lost on restart. The Prisma implementation lands
+ * behind the same interfaces once Postgres is available (see db/repositories).
+ */
+const repositories = createMemoryRepositories();
+const app = createApp(repositories);
 const httpServer = createServer(app);
 const io = createGateway(httpServer);
 
@@ -21,8 +30,9 @@ httpServer.listen(env.PORT, env.HOST, () => {
 
   if (env.PERSISTENCE === 'none') {
     logger.warn(
-      'PERSISTENCE=none — running fully in memory. Guest play, matchmaking, rooms ' +
-        'and combat all work; progression and leaderboards are disabled.',
+      'PERSISTENCE=none — running fully in memory. Everything works, including ' +
+        'accounts and stats, but ALL DATA IS LOST ON RESTART. Set PERSISTENCE=full ' +
+        'with Postgres for durable storage.',
     );
   }
 });

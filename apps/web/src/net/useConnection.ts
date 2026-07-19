@@ -3,6 +3,7 @@ import { connection, type ConnectionSnapshot } from './ConnectionManager';
 import { identity, type IdentitySnapshot } from './IdentityManager';
 import { matchmaking, type MatchmakingSnapshot } from './MatchmakingManager';
 import { roomManager, type RoomSnapshot } from './RoomManager';
+import { authManager, type AuthSnapshot } from './AuthManager';
 
 const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:4000';
 
@@ -43,6 +44,14 @@ export function useMatchmaking(): MatchmakingSnapshot {
     matchmaking.subscribe,
     matchmaking.getSnapshot,
     matchmaking.getSnapshot,
+  );
+}
+
+export function useAuth(): AuthSnapshot {
+  return useSyncExternalStore(
+    authManager.subscribe,
+    authManager.getSnapshot,
+    authManager.getSnapshot,
   );
 }
 

@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import { corsOrigins, isProduction } from '../config/env.js';
 import { logger } from '../logger.js';
 import { healthRouter } from './routes/health.js';
+import { createAuthRouter } from './routes/auth.js';
+import type { Repositories } from '../db/repositories.js';
 
 /**
  * The REST surface.
@@ -12,7 +14,7 @@ import { healthRouter } from './routes/health.js';
  * for health checks, and later for auth, profiles, leaderboards and admin —
  * things that are request/response shaped and cacheable.
  */
-export function createApp(): Express {
+export function createApp(repos: Repositories): Express {
   const app = express();
 
   app.disable('x-powered-by');
@@ -40,6 +42,7 @@ export function createApp(): Express {
   app.use(express.json({ limit: '64kb' }));
 
   app.use('/health', healthRouter);
+  app.use('/api/auth', createAuthRouter(repos));
 
   app.use((_req: Request, res: Response) => {
     res.status(404).json({ error: { code: 'NOT_FOUND' } });

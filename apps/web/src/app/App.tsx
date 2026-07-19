@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { bindAudio, installAudioUnlock } from '@/audio/bindAudio';
+import { authManager } from '@/net/AuthManager';
 import { Backdrop } from '@/ui/Backdrop';
 import { useConnectionLifecycle } from '@/net/useConnection';
 import { LandingScreen } from '@/features/landing/LandingScreen';
@@ -15,6 +16,11 @@ export function App() {
 
   // Audio binds once for the app's lifetime and rides the same event stream as
   // the renderer, so sound can never drift out of sync with what is on screen.
+  // Restores an account session from a stored token, if there is one.
+  useEffect(() => {
+    void authManager.restore();
+  }, []);
+
   useEffect(() => {
     const offAudio = bindAudio();
     const offUnlock = installAudioUnlock();

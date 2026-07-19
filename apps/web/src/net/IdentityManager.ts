@@ -130,6 +130,17 @@ class IdentityManager {
     }
   }
 
+  /**
+   * The raw guest token, for account registration.
+   *
+   * Handing it to the server is what lets a new account ADOPT the matches
+   * already played as a guest — the payoff that makes the results-screen
+   * prompt honest rather than a nag.
+   */
+  get storedToken(): string | null {
+    return this.read()?.token ?? null;
+  }
+
   subscribe = (listener: () => void): (() => void) => {
     this.listeners.add(listener);
     return () => this.listeners.delete(listener);

@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { ConnectionBadge } from '@/ui/ConnectionBadge';
 import { IdentityChip } from '@/features/identity/IdentityChip';
+import { AccountChip } from '@/features/auth/AccountChip';
 import { Wordmark } from '@/ui/Wordmark';
 import { cn } from '@/ui/cn';
 
@@ -41,6 +42,7 @@ export function TopNav() {
         <div className="ml-auto flex items-center gap-4">
           <ConnectionBadge />
           <IdentityChip />
+          <AccountChip />
         </div>
       </div>
     </header>

@@ -761,7 +761,50 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
 
 ### Phase 4 — Progression
 
-- [ ] 4.1 Auth + guest→user upgrade
+- [x] 4.1 Auth + guest→user upgrade
+      → **Built behind a repository seam, which is what unblocked it.** Docker is
+      not installed, so Phase 4 would otherwise have stalled at step one. Every read
+      and write now goes through `db/repositories.ts`; `db/memory.ts` implements it
+      for `PERSISTENCE=none`. That is a real runtime, not a mock — services are
+      tested against it, and when the Prisma implementation lands these tests become
+      its conformance suite.
+      → **scrypt at OWASP parameters, NOT argon2id** (a deliberate deviation from the
+      plan). Every argon2 package for Node is a native module: a toolchain at install
+      time, a heavier Docker image, and breakage on any platform without a prebuilt
+      binary. scrypt is memory-hard, ships with Node, and is OWASP-approved at
+      N=2^17/r=8 (~128MB, ~100ms per hash). Cost is lowered under NODE_ENV=test —
+      the suite ran 25s at production cost, now 2.9s, through the identical code path.
+      → **Login gives the same answer AND the same timing** whether the account is
+      unknown or the password is wrong. A different message would let anyone
+      enumerate registered addresses; the service hashes even when no user was found
+      so a stopwatch cannot undo the message's discretion. Both are tested.
+      → **Registration adopts the guest's match history.** The client hands over its
+      signed guest token and the server reassigns those matches to the new account.
+      Without this the results-screen prompt ("create an account to keep your
+      stats") would be a lie. A forged token claims nothing, and another guest's
+      matches are never touched — both tested.
+      → Password rules are LENGTH-based (10 min) with no composition requirements.
+      Composition rules reliably produce `Password1!` and push people toward reuse;
+      length is what actually costs an attacker. A short common-password list blocks
+      the trivial cases.
+      → Same `Buffer.from(...,'hex')` guards as the room-password path — the empty-
+      buffer bug found in 2.4 would have been identical here.
+      → Account tokens reuse the guest-token signing scheme, so there is ONE
+      verification path to get right rather than two.
+      → `AuthManager` is kept SEPARATE from `IdentityManager`: the guest token is
+      what lets a dropped player rejoin a match, and it must keep working whether or
+      not anyone has registered. Merging them would couple "can I reconnect" to
+      "am I logged in".
+      → UI: `AuthDialog` defaults to REGISTER (the common case is a guest who just
+      finished a match) and pre-fills the username with their guest name, so an
+      account feels like a continuation. `AccountChip` in the nav offers sign-in
+      rather than demanding it.
+      → 214 server tests (31 new). Live-verified 14 checks: 201 on register,
+      ephemeral flag surfaced, password never echoed, duplicate email/username
+      refused, weak and reserved input refused, login works, wrong password and
+      unknown account give identical errors, /me resolves and rejects correctly.
+      → **NOT DONE: the Prisma implementation.** Accounts are lost on restart, the
+      server warns about it at boot, and the UI says so on hover. Needs Docker.
 - [ ] 4.2 Profile + stats pipeline + XP/levels
 - [ ] 4.3 Achievements engine
 - [ ] 4.4 Leaderboards

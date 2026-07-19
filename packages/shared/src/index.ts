@@ -10,6 +10,7 @@
 export * from './ids.js';
 
 export * from './domain/player.js';
+export * from './domain/auth.js';
 export * from './domain/content.js';
 export * from './domain/combat.js';
 export * from './domain/match.js';
