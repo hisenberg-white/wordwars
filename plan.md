@@ -448,7 +448,51 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
       confirmed), 78 snapshots, ultimate fired, KO delivered, both clients agreed on
       the winner, per-fighter stats correct — and the 770 WPM bot script was
       correctly flagged `sustained-rate` while the match still completed.
-- [ ] 3.4 Phaser arena scene + procedural fighters
+- [x] 3.4 Phaser arena scene + procedural fighters
+      → `game/bus.ts` is the React <-> Phaser boundary and the ONLY way anything
+      crosses. Phaser never imports React; React never reaches into a scene. That
+      separation is what makes D3 enforceable — combat events reach the renderer at
+      30Hz without a single component re-rendering. A throwing listener is isolated
+      so one broken FX handler cannot also freeze the HUD.
+      → `ProceduralFighter` implements a `FighterView` interface that is **the swap
+      point for real art (§6.3)**. Nothing outside that file knows how a fighter is
+      drawn, so phase 5.1 replaces geometry with spritesheets in one file and no
+      game logic. That boundary is what makes "fun before pretty" a sequencing
+      choice rather than a rewrite.
+      → Body parts are SEPARATE game objects specifically so they tween
+      independently: an attack is the torso driving forward while the arm swings
+      through on a different easing. One tween on one object is a slide; two on two
+      objects is a strike. Idle has a subliminal breathing bob — a perfectly still
+      fighter reads as a frozen game.
+      → Ultimate has a real wind-up: pull back and swell for 380ms, then commit in
+      130ms. The anticipation is what sells it.
+      → A miss still animates. Silence on a mistake reads as dropped input rather
+      than a missed swing.
+      → `Backdrop` generates three parallax silhouette layers procedurally from an
+      arena `profile` (jagged / blocky / spiky / smooth / flat), drawn ONCE into
+      textures rather than per frame. A backdrop that costs frame budget is stealing
+      it from the fight.
+      → Skyline geometry was EXTRACTED to `game/silhouette.ts` so it can be tested
+      without a canvas: out-of-bounds points do not crash, they just make an arena
+      look subtly wrong forever with nobody able to say why. 35 tests pin bounds,
+      determinism, full-width coverage, per-layer variation and per-profile
+      distinctness.
+      → Test asserts every arena's accent colour MATCHES between the CSS lobby
+      preview and the Phaser renderer — picking Volcano from an orange lobby must
+      not land you somewhere blue.
+      → Phaser input is DISABLED (`keyboard: false`). The InputEngine owns the
+      keyboard (§4.1); letting Phaser also bind it would double-handle every key.
+      No physics either — every motion is an authored tween, so a physics step
+      would be pure overhead.
+      → **Phaser 4** (not the plan's Phaser 3 — 4 is current). Typecheck passes
+      against its types, which is what confirms the APIs used actually exist.
+      → Lazy-loaded via dynamic import + a manual chunk. VERIFIED: `index.html` does
+      not reference phaser; landing page ships 338KB, the 1.6MB engine chunk is
+      fetched only when a match starts.
+      → 135 web tests.
+      → **NOT VISUALLY VERIFIED — no browser tooling.** Types, geometry, bus wiring
+      and bundle splitting are all tested; whether it actually LOOKS good on screen
+      is unknown. This is the largest unverified surface in the project so far.
 - [ ] 3.5 FX — attacks, hits, crits, combos, ultimate cinematic, KO
 - [ ] 3.6 HUD — HP bars, combo counter, ultimate meter, text band
 - [ ] 3.7 Game feel — hit stop, screen shake, damage numbers

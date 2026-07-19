@@ -24,6 +24,9 @@ export default defineConfig({
         // the game engine.
         manualChunks: {
           react: ['react', 'react-dom', 'react-router-dom'],
+          // Split so the landing page never downloads the game engine. The
+          // chunk is only fetched when GameCanvas dynamically imports it.
+          phaser: ['phaser'],
         },
       },
     },

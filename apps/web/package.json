@@ -19,6 +19,7 @@
     "@fontsource/chakra-petch": "^5.1.1",
     "@wordwars/engine": "workspace:*",
     "@wordwars/shared": "workspace:*",
+    "phaser": "^4.2.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.1.1",

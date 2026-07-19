@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { matchmaking } from '@/net/MatchmakingManager';
 import { useIdentity, useMatchmaking, useRoom } from '@/net/useConnection';
 import { CountdownOverlay } from '@/features/room/CountdownOverlay';
+import { MatchScreen } from '@/features/match/MatchScreen';
 import { setAppPhase } from '@/store/appPhase';
 import { Button } from '@/ui/Button';
 import { Panel } from '@/ui/Panel';
@@ -40,6 +41,10 @@ export function PlayScreen() {
     matchmaking.cancel();
     navigate('/');
   };
+
+  // Quick match goes straight from the countdown into the arena, with no
+  // lobby in between.
+  if (room?.phase === 'in-match') return <MatchScreen />;
 
   return (
     <div className="flex min-h-screen flex-col">

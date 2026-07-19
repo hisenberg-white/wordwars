@@ -8,6 +8,7 @@ import type {
   PlayerId,
 } from '@wordwars/shared';
 import { connection } from './ConnectionManager';
+import { gameBus } from '@/game/bus';
 import { InputEngine, type WordCommit } from '@/input/InputEngine';
 
 export type MatchStatus = 'idle' | 'live' | 'ended';
@@ -64,6 +65,11 @@ class MatchManager {
     if (!socket || this.bound) return;
     this.bound = true;
 
+    // Everything the renderer needs crosses the game bus, never React props.
+    this.onEvent((events, predicted) => gameBus.emit('combat:events', { events, predicted }));
+    this.onSnapshot((snapshot) => gameBus.emit('match:snapshot', snapshot));
+    this.input.onProgress((progress) => gameBus.emit('typing:progress', progress));
+
     socket.on('match:start', ({ config, fighters, firstSentence }) => {
       this.local = createMatchState({
         matchId: config.matchId,
@@ -78,6 +84,7 @@ class MatchManager {
       this.input.pushSentence(firstSentence.words);
       this.input.attach(document, performance.now());
 
+      gameBus.emit('match:begin', { config, fighters, selfId: this.selfId ?? '' });
       this.publish({ status: 'live', config, fighters, result: null });
     });
 
@@ -93,6 +100,7 @@ class MatchManager {
 
     socket.on('match:end', (result) => {
       this.input.detach();
+      gameBus.emit('match:over', result);
       this.publish({ status: 'ended', result });
     });
 
