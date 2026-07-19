@@ -119,7 +119,33 @@ compile-verified and test-verified but never actually looked at.
 
 ### Phase 2 — Getting Two Humans Into A Fight
 
-- [ ] 2.1 Landing page (hero, nav, footer, ad slot)
+- [x] 2.1 Landing page (hero, nav, footer, ad slot)
+      → `features/landing/`: TopNav (sticky, blurred), Hero, CombatPrimer,
+      RosterPreview, SiteFooter. Roster/arena lists are driven from
+      `@wordwars/shared` (`CHARACTERS` / `ARENAS` metadata added there), so adding
+      a fighter is a one-line catalogue change.
+      → **Hero is a VS standoff, not a SaaS hero.** Two angular portrait frames facing
+      inward with a giant VS between them — the layout states the premise before
+      anyone reads a word. Silhouettes are inline SVG, stylised rather than grey
+      boxes, so the page looks finished long before real sprites exist (3.4/5.1).
+      → Copy is written as CONSEQUENCES, not features ("Every word is a strike", not
+      "real-time typing engine"). Roster section says outright that fighters have
+      identical stats — players should never wonder if a character is a
+      competitive choice.
+      → **`AdSlot` enforces "no ads during combat" structurally**, not by convention:
+      it reads `store/appPhase` and returns null while `phase === 'combat'`. A
+      future screen cannot accidentally opt in. 8 tests lock this, including the
+      case a static check would miss — an ad already on screen when a fight starts.
+      → `store/createStore.ts` — tiny external store + `useStore`, same shape as
+      ConnectionManager so UI state and network state share one idea of where
+      state lives. Swapping in zustand later leaves call sites unchanged.
+      → Unbuilt destinations render `ComingSoonScreen` naming the plan step that
+      replaces them (see `app/routes.tsx`), rather than disabled buttons that make
+      a front page feel dead. An unreplaced placeholder is self-documenting debt.
+      → Web test harness set up (vitest + jsdom + testing-library). 21 tests total
+      across the repo, all green; full CI sequence passes; all routes serve 200.
+      → STILL NOT VISUALLY VERIFIED — no browser tooling. Structure and behaviour are
+      tested; appearance is not.
 - [ ] 2.2 Guest identity (generated names, editable, signed token)
 - [ ] 2.3 Matchmaking queue + "Searching…" screen
 - [ ] 2.4 Private rooms (create, code, share link, join)
