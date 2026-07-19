@@ -251,7 +251,38 @@ compile-verified and test-verified but never actually looked at.
       → 107 tests. Live-verified 11 checks end to end: create, join by code,
       host notified, room-full refusal, spectator past the cap, hasPassword
       reporting, and all three password paths.
-- [ ] 2.5 Lobby (player cards, character select, arena preview, ready, chat, ping)
+- [x] 2.5 Lobby (player cards, character select, arena preview, ready, chat, ping)
+      → Server: `room:character` / `room:ready` / `room:chat` / `room:kick`, system
+      chat messages on join/leave/kick, `RoomRegistry.canStart()`.
+      → Client `features/room/lobby/`: ArenaBanner, PlayerCard + EmptySlot,
+      CharacterPicker, LobbyChat, LobbyScreen. `game/arenaTheme.ts` gives every
+      arena a colour identity — placeholder art, but the REAL art should match
+      these, not the reverse: picking "Volcano" from an orange lobby must not
+      land you somewhere blue.
+      → **Laid out as a versus screen, not a settings form.** Arena banner on top,
+      fighters facing each other with VS between, roster below. A glance should
+      show a fight about to happen.
+      → **Ping broadcasts are throttled by a 25ms threshold** (`setPing` returns
+      whether it's worth telling anyone). Pings jitter constantly; broadcasting
+      every sample would push a full room snapshot to every client several times
+      a second to move a number nobody watches that closely.
+      → Chat is delivered VERBATIM — no server-side escaping. React renders it as
+      text, so escaping server-side would only mangle legitimate messages
+      containing `<` or `&`. A test pins this so nobody "fixes" it later.
+      → Chat auto-scrolls only when already pinned to the bottom; yanking someone
+      back down while they're reading is a small betrayal every chat gets wrong once.
+      → Client chat history capped at 100 — unbounded array in a long-lived lobby
+      is a slow leak.
+      → Spectators can't ready up and are excluded from `canStart`, so they can
+      never hold a match hostage. Invite panel hides once the room is full.
+      → **TEST RACE FOUND AND FIXED:** `once('room:state')` captured in-flight
+      snapshots from the previous action. Replaced with predicate-based
+      `waitForState` — necessary now that ping updates also trigger broadcasts,
+      and it would only have got flakier. Use the predicate form for all future
+      room-state tests.
+      → 123 tests. Live-verified 9 checks with three clients: create, join
+      announcement, character broadcast, both-ready, verbatim chat, spectator
+      seating, spectator ready ignored, non-host kick refused, host kick works.
 - [ ] 2.6 Host settings panel + 3-2-1-FIGHT countdown
 
 ### Phase 3 — The Game

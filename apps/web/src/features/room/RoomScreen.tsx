@@ -6,7 +6,7 @@ import { setAppPhase } from '@/store/appPhase';
 import { Button } from '@/ui/Button';
 import { Panel, PanelLabel } from '@/ui/Panel';
 import { TopNav } from '@/features/landing/components/TopNav';
-import { InviteLink } from './InviteLink';
+import { LobbyScreen } from './lobby/LobbyScreen';
 
 /**
  * A private room, reached directly by its shareable URL.
@@ -19,7 +19,7 @@ export function RoomScreen() {
   const { code } = useParams<{ code: string }>();
   const navigate = useNavigate();
   const { identity } = useIdentity();
-  const { room, status, error, needsPassword } = useRoom();
+  const { room, status, error, needsPassword, messages } = useRoom();
 
   const [password, setPassword] = useState('');
   const attemptedRef = useRef<string | null>(null);
@@ -115,66 +115,12 @@ export function RoomScreen() {
 
   return (
     <Shell>
-      <div className="w-full max-w-3xl space-y-6">
-        <Panel className="p-8">
-          <InviteLink code={room.code} />
-        </Panel>
-
-        <Panel className="p-6">
-          <div className="flex items-baseline justify-between">
-            <PanelLabel>Fighters</PanelLabel>
-            <span className="text-xs text-ink-faint">
-              {room.members.filter((m) => !m.isSpectator).length} / {room.settings.maxPlayers}
-            </span>
-          </div>
-
-          <ul className="mt-4 space-y-2">
-            {room.members.map((member, index) => (
-              <li
-                key={member.playerId}
-                className="flex items-center gap-3 border border-line/60 bg-abyss/50 px-4 py-3"
-              >
-                <span
-                  className={`size-2 rounded-full ${index === 0 ? 'bg-p1' : 'bg-p2'}`}
-                  aria-hidden
-                />
-                <span className="font-display text-sm uppercase tracking-wide text-ink">
-                  {member.nickname}
-                </span>
-                {member.isHost && (
-                  <span className="font-display text-[0.6rem] uppercase tracking-[0.2em] text-ultimate">
-                    Host
-                  </span>
-                )}
-                {member.isSpectator && (
-                  <span className="text-[0.6rem] uppercase tracking-[0.2em] text-ink-faint">
-                    Spectating
-                  </span>
-                )}
-                <span className="ml-auto text-xs text-ink-faint">
-                  {member.ping !== null ? `${member.ping} ms` : '—'}
-                </span>
-              </li>
-            ))}
-          </ul>
-
-          {room.members.length < 2 && (
-            <p className="mt-4 text-center text-sm text-ink-faint">
-              Waiting for an opponent — send them the code above.
-            </p>
-          )}
-        </Panel>
-
-        <div className="flex justify-between">
-          <Button variant="ghost" onClick={leave}>
-            Leave room
-          </Button>
-          {/* Ready-up and start arrive with the lobby in 2.5/2.6. */}
-          <Button variant="primary" disabled title="Lobby controls arrive in step 2.5">
-            Start Match
-          </Button>
-        </div>
-      </div>
+      <LobbyScreen
+        room={room}
+        messages={messages}
+        selfId={identity?.playerId ?? null}
+        onLeave={leave}
+      />
     </Shell>
   );
 }

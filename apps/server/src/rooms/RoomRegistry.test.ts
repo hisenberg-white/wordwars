@@ -118,6 +118,83 @@ describe('RoomRegistry', () => {
     expect(rooms.toState(room).members.map((m) => m.nickname)).toEqual(['first', 'second']);
   });
 
+  describe('lobby state', () => {
+    it('reports a change only when the character actually differs', () => {
+      const rooms = new RoomRegistry();
+      const room = rooms.create();
+      rooms.addMember(room, player('alice'), NINJA);
+
+      expect(rooms.setCharacter(room, asPlayerId('alice'), 'viking' as CharacterId)).toBe(true);
+      expect(rooms.setCharacter(room, asPlayerId('alice'), 'viking' as CharacterId)).toBe(false);
+    });
+
+    it('ignores ready toggles from spectators', () => {
+      const rooms = new RoomRegistry();
+      const room = rooms.create();
+      rooms.addMember(room, player('watcher'), NINJA, true);
+
+      expect(rooms.setReady(room, asPlayerId('watcher'), true)).toBe(false);
+      expect(rooms.toState(room).members[0]?.isReady).toBe(false);
+    });
+
+    /**
+     * Pings jitter constantly. Broadcasting every sample would push a full room
+     * snapshot to every client several times a second to move a number nobody
+     * is watching that closely.
+     */
+    it('only signals a ping broadcast when the change is material', () => {
+      const rooms = new RoomRegistry();
+      const room = rooms.create();
+      rooms.addMember(room, player('alice'), NINJA);
+      const alice = asPlayerId('alice');
+
+      expect(rooms.setPing(room, alice, 40)).toBe(true); // first sample
+      expect(rooms.setPing(room, alice, 45)).toBe(false); // jitter
+      expect(rooms.setPing(room, alice, 52)).toBe(false); // still within threshold
+      expect(rooms.setPing(room, alice, 120)).toBe(true); // genuine change
+
+      expect(rooms.toState(room).members[0]?.ping).toBe(120);
+    });
+
+    describe('canStart', () => {
+      it('is false with a single player, however ready they are', () => {
+        const rooms = new RoomRegistry();
+        const room = rooms.create();
+        rooms.addMember(room, player('alice'), NINJA);
+        rooms.setReady(room, asPlayerId('alice'), true);
+
+        expect(rooms.canStart(room)).toBe(false);
+      });
+
+      it('is false until everyone is ready', () => {
+        const rooms = new RoomRegistry();
+        const room = rooms.create();
+        rooms.addMember(room, player('alice'), NINJA);
+        rooms.addMember(room, player('bob'), NINJA);
+
+        rooms.setReady(room, asPlayerId('alice'), true);
+        expect(rooms.canStart(room)).toBe(false);
+
+        rooms.setReady(room, asPlayerId('bob'), true);
+        expect(rooms.canStart(room)).toBe(true);
+      });
+
+      /** A spectator must never be able to hold the match hostage. */
+      it('ignores spectators when deciding', () => {
+        const rooms = new RoomRegistry();
+        const room = rooms.create();
+        rooms.addMember(room, player('alice'), NINJA);
+        rooms.addMember(room, player('bob'), NINJA);
+        rooms.addMember(room, player('watcher'), NINJA, true);
+
+        rooms.setReady(room, asPlayerId('alice'), true);
+        rooms.setReady(room, asPlayerId('bob'), true);
+
+        expect(rooms.canStart(room)).toBe(true);
+      });
+    });
+  });
+
   it('counts players across all rooms', () => {
     const rooms = new RoomRegistry();
     const a = rooms.create();

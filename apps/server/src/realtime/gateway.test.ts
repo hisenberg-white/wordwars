@@ -583,6 +583,218 @@ describe('gateway', () => {
     });
   });
 
+  describe('lobby', () => {
+    async function identified(nickname: string): Promise<TestClient> {
+      const client = await connectClient();
+      await client.timeout(2_000).emitWithAck('guest:init', { nickname });
+      return client;
+    }
+
+    const SETTINGS = {
+      mode: '1v1',
+      arenaId: 'dojo',
+      randomArena: false,
+      randomCharacter: false,
+      difficulty: 'normal',
+      language: 'en',
+      roundCount: 3,
+      enableUltimate: true,
+      enableCrits: true,
+      isPublic: false,
+      maxPlayers: 2,
+      allowSpectators: true,
+    } as const;
+
+    async function roomWithTwo() {
+      const host = await identified('HostFox');
+      const guest = await identified('GuestViper');
+
+      const created = await host.timeout(3_000).emitWithAck('room:create', { settings: SETTINGS });
+      if (!created.ok) throw new Error('create failed');
+
+      const joined = await guest
+        .timeout(3_000)
+        .emitWithAck('room:join', { code: created.data.code });
+      if (!joined.ok) throw new Error('join failed');
+
+      return { host, guest, code: created.data.code };
+    }
+
+    /**
+     * Waits for a room snapshot satisfying `predicate`.
+     *
+     * Deliberately NOT `once('room:state')`. Snapshots also arrive from
+     * unrelated causes — ping updates especially — so grabbing "the next one"
+     * races against whatever was already in flight. Waiting for the state we
+     * actually care about is both correct and stable as more broadcast
+     * triggers are added.
+     */
+    const waitForState = (client: TestClient, predicate: (s: RoomState) => boolean) =>
+      new Promise<RoomState>((resolve, reject) => {
+        const timer = setTimeout(
+          () => reject(new Error('timed out waiting for room state')),
+          3_000,
+        );
+
+        const onState = (state: RoomState) => {
+          if (!predicate(state)) return;
+          clearTimeout(timer);
+          client.off('room:state', onState);
+          resolve(state);
+        };
+
+        client.on('room:state', onState);
+      });
+
+    const memberNamed = (s: RoomState, nickname: string) =>
+      s.members.find((m) => m.nickname === nickname);
+
+    it('changes a character and tells everyone', async () => {
+      const { host, guest } = await roomWithTwo();
+      const seen = waitForState(guest, (s) => memberNamed(s, 'HostFox')?.characterId === 'viking');
+
+      const res = await host.timeout(3_000).emitWithAck('room:character', {
+        characterId: 'viking',
+      });
+
+      expect(res.ok).toBe(true);
+      await expect(seen).resolves.toBeTruthy();
+    });
+
+    it('marks a player ready and tells everyone', async () => {
+      const { host, guest } = await roomWithTwo();
+      const seen = waitForState(guest, (s) => memberNamed(s, 'HostFox')?.isReady === true);
+
+      await host.timeout(3_000).emitWithAck('room:ready', { ready: true });
+
+      await expect(seen).resolves.toBeTruthy();
+    });
+
+    it('lets a player un-ready', async () => {
+      const { host, guest } = await roomWithTwo();
+
+      const readied = waitForState(guest, (s) => memberNamed(s, 'HostFox')?.isReady === true);
+      await host.timeout(3_000).emitWithAck('room:ready', { ready: true });
+      await readied;
+
+      const unreadied = waitForState(guest, (s) => memberNamed(s, 'HostFox')?.isReady === false);
+      await host.timeout(3_000).emitWithAck('room:ready', { ready: false });
+
+      await expect(unreadied).resolves.toBeTruthy();
+    });
+
+    it('delivers chat to the whole room', async () => {
+      const { host, guest } = await roomWithTwo();
+
+      const received = new Promise<{ text: string; nickname: string; system: boolean }>(
+        (resolve) => {
+          guest.on('room:chat', (m) => {
+            if (!m.system) resolve(m);
+          });
+        },
+      );
+
+      await host.timeout(3_000).emitWithAck('room:chat', { text: 'good luck' });
+
+      const message = await received;
+      expect(message.text).toBe('good luck');
+      expect(message.nickname).toBe('HostFox');
+    });
+
+    /**
+     * Chat is rendered as text by React, never as HTML. The server must NOT
+     * sanitise, or it would mangle legitimate messages — this pins that
+     * decision so nobody "fixes" it by adding escaping later.
+     */
+    it('delivers chat text verbatim, including characters that look like markup', async () => {
+      const { host, guest } = await roomWithTwo();
+
+      const received = new Promise<{ text: string }>((resolve) => {
+        guest.on('room:chat', (m) => {
+          if (!m.system) resolve(m);
+        });
+      });
+
+      await host.timeout(3_000).emitWithAck('room:chat', { text: '5 < 6 && 7 > 2' });
+
+      expect((await received).text).toBe('5 < 6 && 7 > 2');
+    });
+
+    it('rejects an empty chat message', async () => {
+      const { host } = await roomWithTwo();
+      const res = await host.timeout(3_000).emitWithAck('room:chat', { text: '   ' });
+
+      expect(res.ok).toBe(false);
+      if (res.ok) throw new Error('unreachable');
+      expect(res.error.code).toBe('INVALID_PAYLOAD');
+    });
+
+    it('announces joins as a system message', async () => {
+      const host = await identified('HostFox');
+      const guest = await identified('GuestViper');
+
+      const created = await host.timeout(3_000).emitWithAck('room:create', { settings: SETTINGS });
+      if (!created.ok) throw new Error('create failed');
+
+      const system = new Promise<{ text: string; system: boolean }>((resolve) => {
+        host.on('room:chat', (m) => {
+          if (m.system) resolve(m);
+        });
+      });
+
+      await guest.timeout(3_000).emitWithAck('room:join', { code: created.data.code });
+
+      const message = await system;
+      expect(message.system).toBe(true);
+      expect(message.text).toContain('GuestViper');
+    });
+
+    describe('kick', () => {
+      it('lets the host remove someone', async () => {
+        const { host, guest } = await roomWithTwo();
+
+        const removed = new Promise<{ reason: string }>((resolve) => {
+          guest.once('room:closed', resolve);
+        });
+
+        const sockets = await gateway.fetchSockets();
+        const guestId = sockets.find((s) => s.data.identity.nickname === 'GuestViper')?.data
+          .playerId;
+
+        const res = await host.timeout(3_000).emitWithAck('room:kick', { playerId: guestId! });
+
+        expect(res.ok).toBe(true);
+        if (!res.ok) throw new Error('unreachable');
+        expect(res.data.members).toHaveLength(1);
+        await expect(removed).resolves.toBeTruthy();
+      });
+
+      /** Anyone being able to kick would make every public room unusable. */
+      it('refuses a non-host', async () => {
+        const { guest } = await roomWithTwo();
+
+        const sockets = await gateway.fetchSockets();
+        const hostId = sockets.find((s) => s.data.identity.nickname === 'HostFox')?.data.playerId;
+
+        const res = await guest.timeout(3_000).emitWithAck('room:kick', { playerId: hostId! });
+
+        expect(res.ok).toBe(false);
+        if (res.ok) throw new Error('unreachable');
+        expect(res.error.code).toBe('NOT_HOST');
+      });
+    });
+
+    it('refuses lobby actions from a player who is not in a room', async () => {
+      const drifter = await identified('Drifter');
+
+      const res = await drifter.timeout(3_000).emitWithAck('room:ready', { ready: true });
+
+      expect(res.ok).toBe(false);
+      if (res.ok) throw new Error('unreachable');
+      expect(res.error.code).toBe('NOT_IN_MATCH');
+    });
+  });
+
   it('drops the socket record on disconnect', async () => {
     const client = await connectClient();
     expect(await gateway.fetchSockets()).toHaveLength(1);

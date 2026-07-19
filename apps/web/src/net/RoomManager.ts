@@ -1,4 +1,10 @@
-import type { RoomSettings, RoomState, SocketErrorCode } from '@wordwars/shared';
+import type {
+  CharacterId,
+  ChatMessage,
+  RoomSettings,
+  RoomState,
+  SocketErrorCode,
+} from '@wordwars/shared';
 import { connection } from './ConnectionManager';
 
 export type RoomStatus = 'idle' | 'joining' | 'in-room' | 'error';
@@ -9,13 +15,23 @@ export interface RoomSnapshot {
   readonly error: SocketErrorCode | null;
   /** Set when the server wants a password we do not have. */
   readonly needsPassword: boolean;
+  readonly messages: readonly ChatMessage[];
 }
+
+/**
+ * Chat history is capped.
+ *
+ * An unbounded array in a long-lived lobby is a slow memory leak, and nobody
+ * scrolls back 200 messages in a room they are about to leave.
+ */
+const MAX_MESSAGES = 100;
 
 const IDLE: RoomSnapshot = {
   status: 'idle',
   room: null,
   error: null,
   needsPassword: false,
+  messages: [],
 };
 
 class RoomManager {
@@ -35,7 +51,30 @@ class RoomManager {
       this.publish({ status: 'in-room', room, error: null, needsPassword: false });
     });
 
+    socket.on('room:chat', (message) => {
+      const next = [...this.snapshot.messages, message];
+      this.publish({ messages: next.slice(-MAX_MESSAGES) });
+    });
+
     socket.on('room:closed', () => this.publish(IDLE));
+  }
+
+  selectCharacter(characterId: CharacterId): void {
+    connection.socket?.emit('room:character', { characterId }, () => {});
+  }
+
+  setReady(ready: boolean): void {
+    connection.socket?.emit('room:ready', { ready }, () => {});
+  }
+
+  sendChat(text: string): void {
+    const trimmed = text.trim();
+    if (!trimmed) return;
+    connection.socket?.emit('room:chat', { text: trimmed.slice(0, 200) }, () => {});
+  }
+
+  kick(playerId: string): void {
+    connection.socket?.emit('room:kick', { playerId }, () => {});
   }
 
   create(settings: RoomSettings, password?: string): Promise<RoomState | null> {

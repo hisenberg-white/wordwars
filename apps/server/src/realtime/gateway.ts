@@ -173,7 +173,18 @@ export function createGatewayWithContext(httpServer: HttpServer): Gateway {
         // The client's own send time comes back to us, letting the server
         // record a ping for the lobby without a second round trip.
         const rtt = Date.now() - payload.clientTime;
-        if (rtt >= 0 && rtt < 10_000) socket.data.ping = rtt;
+        if (rtt >= 0 && rtt < 10_000) {
+          socket.data.ping = rtt;
+
+          // Only rebroadcasts when the change is material — see setPing.
+          const roomId = socket.data.roomId;
+          if (roomId) {
+            const room = ctx.rooms.get(asRoomId(roomId));
+            if (room && ctx.rooms.setPing(room, socket.data.playerId, rtt)) {
+              io.to(room.id).emit('room:state', ctx.rooms.toState(room));
+            }
+          }
+        }
 
         ack({ ok: true, data: { serverTime: Date.now() } });
       }),

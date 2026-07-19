@@ -47,6 +47,9 @@ export interface RoomMemberRecord {
   joinedAt: number;
 }
 
+/** Ping must move by at least this much before it is worth a broadcast. */
+const PING_BROADCAST_THRESHOLD_MS = 25;
+
 export interface CreateRoomOptions {
   readonly settings?: Partial<RoomSettings>;
   readonly passwordHash?: string | null;
@@ -157,6 +160,48 @@ export class RoomRegistry {
     }
 
     return room;
+  }
+
+  setCharacter(room: LiveRoom, playerId: PlayerId, characterId: CharacterId): boolean {
+    const member = room.members.get(playerId);
+    if (!member || member.characterId === characterId) return false;
+
+    member.characterId = characterId;
+    return true;
+  }
+
+  setReady(room: LiveRoom, playerId: PlayerId, ready: boolean): boolean {
+    const member = room.members.get(playerId);
+    // Spectators have nothing to be ready for, and letting them toggle it
+    // would block a start that is otherwise good to go.
+    if (!member || member.isSpectator || member.isReady === ready) return false;
+
+    member.isReady = ready;
+    return true;
+  }
+
+  /**
+   * Records a ping sample.
+   *
+   * Returns true only when the change is large enough to be worth telling
+   * everyone about. Pings jitter by a few ms constantly; broadcasting every
+   * sample would push a full room snapshot to every client several times a
+   * second to move a number nobody is watching that closely.
+   */
+  setPing(room: LiveRoom, playerId: PlayerId, ping: number): boolean {
+    const member = room.members.get(playerId);
+    if (!member) return false;
+
+    const previous = member.ping;
+    member.ping = ping;
+
+    return previous === null || Math.abs(previous - ping) >= PING_BROADCAST_THRESHOLD_MS;
+  }
+
+  /** True when the room could legally start a match right now. */
+  canStart(room: LiveRoom): boolean {
+    const players = [...room.members.values()].filter((m) => !m.isSpectator);
+    return players.length >= 2 && players.every((m) => m.isReady && m.connected);
   }
 
   destroy(room: LiveRoom): void {
