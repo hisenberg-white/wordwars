@@ -16,6 +16,7 @@ import type { Pairing } from '../matchmaking/MatchmakingService.js';
 import { createRealtimeContext, type RealtimeContext } from './context.js';
 import { OnlineRegistry } from './onlineRegistry.js';
 import { registerFriendHandlers } from './handlers/friends.js';
+import { registerSoloHandlers } from './handlers/solo.js';
 import { registerGuestHandlers } from './handlers/guest.js';
 import { registerMatchHandlers } from './handlers/match.js';
 import { registerMatchmakingHandlers } from './handlers/matchmaking.js';
@@ -238,6 +239,7 @@ export function createGatewayWithContext(
       (s) => online.add(s),
     );
     registerFriendHandlers(socket, ctx, online);
+    registerSoloHandlers(socket, ctx, io);
     registerMatchmakingHandlers(socket, ctx, io);
     registerRoomHandlers(socket, ctx, io);
     registerMatchHandlers(socket, ctx, io);

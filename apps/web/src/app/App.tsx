@@ -19,6 +19,7 @@ import { LeaderboardScreen } from '@/features/leaderboard/LeaderboardScreen';
 import { FriendsScreen } from '@/features/friends/FriendsScreen';
 import { ChallengeToast } from '@/features/friends/ChallengeToast';
 import { SettingsScreen } from '@/features/settings/SettingsScreen';
+import { PracticeScreen } from '@/features/practice/PracticeScreen';
 import { PENDING_ROUTES } from './routes';
 
 export function App() {
@@ -82,6 +83,7 @@ export function App() {
           <Route path="/leaderboard" element={<LeaderboardScreen />} />
           <Route path="/friends" element={<FriendsScreen />} />
           <Route path="/settings" element={<SettingsScreen />} />
+          <Route path="/practice" element={<PracticeScreen />} />
           {PENDING_ROUTES.map(({ path, element }) => (
             <Route key={path} path={path} element={element} />
           ))}

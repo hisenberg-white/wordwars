@@ -5,6 +5,7 @@ import type { RealtimeContext } from '../realtime/context.js';
 import type { GameServer } from '../realtime/gateway.js';
 import { ServerMatch, type MatchParticipant, type MatchSink } from './ServerMatch.js';
 import { recordMatchResult } from './recordResult.js';
+import { bots, findProfile } from './BotPlayer.js';
 
 /**
  * Turns a room whose countdown has finished into a live match.
@@ -71,6 +72,13 @@ export function startMatchForRoom(
   ctx.matches.add(match, [a.identity.playerId, b.identity.playerId]);
 
   const { config, fighters, firstSentence } = match.start();
+
+  // A practice room names its opponent; start driving it now that the fight
+  // exists. Every other path is untouched.
+  if (room.bot) {
+    const profile = findProfile(room.bot.difficulty);
+    if (profile) bots.add(match, room.bot.playerId, profile);
+  }
 
   // Tag each socket with the match it belongs to, so `match:word` can find it
   // without a lookup by player.

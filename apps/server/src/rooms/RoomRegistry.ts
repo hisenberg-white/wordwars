@@ -38,6 +38,14 @@ export interface LiveRoom {
   countdownTimer: ReturnType<typeof setTimeout> | null;
   /** Matchmade rooms are transient and skip the lobby entirely. */
   readonly isQuickMatch: boolean;
+  /**
+   * Set on a practice room, naming the opponent the server must drive.
+   *
+   * Stored on the room rather than passed through the countdown, because the
+   * match is created later by the same path every other match uses — and that
+   * path should not need a special case for who is playing.
+   */
+  bot?: { playerId: PlayerId; difficulty: string };
 }
 
 export interface RoomMemberRecord {

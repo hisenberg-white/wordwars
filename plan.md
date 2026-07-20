@@ -985,6 +985,35 @@ matchmaking or by invite link. Phase 3 builds the fight itself.
       deploys, and a settings screen that throws on a stale blob would lock a
       player out of the screen they need to fix it.
       → 289 web tests (+28). Production build clean.
+- [x] 5.10 Practice vs the computer (added, not in the original plan)
+      → Added because the honest state of a young game is that nobody else is
+      online, and "Searching for an opponent" forever is not a game.
+      → The bot is a **real participant in a real match**, submitting words
+      through the same `submitWord` the network path uses. A separate practice
+      mode with its own pipeline would drift from the real game within a week
+      and its numbers would quietly stop meaning the same thing.
+      → **Practice is never recorded.** Checked in `recordMatchResult`, the one
+      point every result passes through, so no future caller can forget it.
+      Otherwise the leaderboards stop measuring skill and start measuring who
+      was most willing to farm a machine — the same failure the win-rate
+      qualifier prevents. The player still gets every number on the results
+      screen; it just is not a claim about them relative to other people.
+      → Bot ids are prefixed `bot:` — that marker IS the enforcement.
+      → Timing is jittered ±25%: a metronome reads as a machine within about
+      five words, and the variance is most of what makes it feel like there is
+      someone on the other side.
+      → Bots miss, at a rate set per difficulty. An opponent that never broke
+      combo would teach the wrong lesson about why accuracy is the mechanic.
+      → The ladder tops out at 105 WPM, under the human ceiling: a bot that
+      cannot be beaten teaches nothing. The bottom rung is genuinely slow,
+      because the player most in need of practice is the one a fast bot buries.
+      → ONE timer drives every bot — a timer per bot would reintroduce exactly
+      the cost 5.8 just removed.
+      → Offered where the absence is actually felt: the empty-queue state links
+      straight to it, rather than burying it in a menu.
+      → **Live-verified 10 checks**: a real knockout, the bot fighting and
+      missing on its own, the player's own WPM/accuracy/combo returned, and a
+      signed-in player's stats and history left completely untouched.
 - [ ] 5.6 Spectator mode
 - [x] 5.7 Best-of-3/5 rounds
       → **Fixed a setting that was lying.** `roundCount` has been in the lobby

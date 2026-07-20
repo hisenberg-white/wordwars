@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/ui/Button';
+import { Link } from 'react-router-dom';
 import { PanelLabel } from '@/ui/Panel';
 
 /**
@@ -112,9 +113,18 @@ export function SearchingPanel({
       )}
 
       {quiet ? (
-        <p className="mt-8 h-12 max-w-sm text-balance text-sm leading-relaxed text-ink-faint">
-          Open the game in a second window to fight yourself, or send a friend the link.
-        </p>
+        /*
+         * The moment the absence is actually felt is the moment to offer the
+         * alternative — not buried in a menu the player would have to think to
+         * go looking for.
+         */
+        <div className="mt-8 flex h-12 flex-col items-center justify-center gap-3">
+          <Link to="/practice">
+            <Button variant="secondary" size="sm">
+              Practise against the computer
+            </Button>
+          </Link>
+        </div>
       ) : (
         <p
           key={tipIndex}

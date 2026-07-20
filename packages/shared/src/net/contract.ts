@@ -15,6 +15,7 @@ import type {
   GuestInitPayload,
   MatchHeartbeatPayload,
   FriendChallengePayload,
+  SoloStartPayload,
   MatchWordPayload,
   MatchmakingJoinPayload,
   RoomChatPayload,
@@ -40,6 +41,15 @@ export interface ClientToServerEvents {
 
   'mm:join': (p: MatchmakingJoinPayload, ack: (r: Ack<{ queuedAt: number }>) => void) => void;
   'mm:leave': (ack: (r: Ack) => void) => void;
+
+  /**
+   * Starts a practice match against the computer.
+   *
+   * Separate from `mm:join` because it is not queueing — there is nothing to
+   * wait for. The result is a real match against a real opponent that happens
+   * to be driven by the server.
+   */
+  'solo:start': (p: SoloStartPayload, ack: (r: Ack<{ roomId: string }>) => void) => void;
 
   'room:create': (p: RoomCreatePayload, ack: (r: Ack<RoomState>) => void) => void;
   'room:join': (p: RoomJoinPayload, ack: (r: Ack<RoomState>) => void) => void;

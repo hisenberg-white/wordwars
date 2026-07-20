@@ -3,6 +3,7 @@ import { logger } from '../logger.js';
 import type { MatchOutcomeForStats, Repositories } from '../db/repositories.js';
 import { levelForXp, xpForMatch } from '../services/progression.js';
 import { evaluate } from '../services/achievements.js';
+import { isBotId } from './BotPlayer.js';
 
 /**
  * Persists a finished match and updates progression.
@@ -22,6 +23,24 @@ export async function recordMatchResult(
   accounts: ReadonlyMap<PlayerId, UserId>,
   nicknames: ReadonlyMap<PlayerId, string>,
 ): Promise<void> {
+  /*
+   * A match against the computer is practice, not a record.
+   *
+   * Checked HERE, at the single point every result must pass through, rather
+   * than at the call sites — a new caller cannot forget it, and there is no
+   * path that quietly writes a bot win into somebody's history.
+   *
+   * Without this the leaderboards would stop measuring skill and start
+   * measuring who was most willing to farm a machine, which is the same way
+   * the win-rate board fails without a qualifier. The player still sees every
+   * number from the fight on the results screen; it simply is not a claim
+   * about them relative to other people.
+   */
+  if (result.fighters.some((fighter) => isBotId(fighter.playerId))) {
+    logger.debug({ matchId: result.matchId }, 'Practice match — not recorded');
+    return;
+  }
+
   try {
     await repos.matches.record({
       id: result.matchId,

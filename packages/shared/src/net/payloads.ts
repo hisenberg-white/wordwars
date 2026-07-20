@@ -91,6 +91,12 @@ export const roomKickSchema = z.object({
   playerId: z.string().min(1).max(64),
 });
 
+/** Starts a practice match against the computer. */
+export const soloStartSchema = z.object({
+  difficulty: z.enum(['rookie', 'fighter', 'veteran', 'champion']),
+  characterId: z.string().min(1).max(64),
+});
+
 /** Challenges a friend, addressed by account id rather than socket. */
 export const friendChallengeSchema = z.object({
   userId: z.string().min(1).max(64),
@@ -128,5 +134,6 @@ export type RoomReadyPayload = z.infer<typeof roomReadySchema>;
 export type RoomChatPayload = z.infer<typeof roomChatSchema>;
 export type RoomKickPayload = z.infer<typeof roomKickSchema>;
 export type FriendChallengePayload = z.infer<typeof friendChallengeSchema>;
+export type SoloStartPayload = z.infer<typeof soloStartSchema>;
 export type MatchWordPayload = z.infer<typeof matchWordSchema>;
 export type MatchHeartbeatPayload = z.infer<typeof matchHeartbeatSchema>;
