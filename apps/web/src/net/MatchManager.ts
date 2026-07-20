@@ -164,6 +164,18 @@ class MatchManager {
    * decides when the next round begins, and a client counting down on its own
    * would start typing into a round that has not opened yet.
    */
+  /**
+   * Suspends keyboard input without tearing the engine down.
+   *
+   * Used by the leave dialog: with a modal open, keystrokes must not reach the
+   * arena or the player attacks blind through it. Public because the dialog is
+   * a UI concern that still needs the input engine, and reaching into the
+   * manager's internals from a component would be worse.
+   */
+  setInputPaused(paused: boolean): void {
+    this.input.setPaused(paused);
+  }
+
   private setIntermission(active: boolean): void {
     if (this.input.isPaused === active) return;
     this.input.setPaused(active);

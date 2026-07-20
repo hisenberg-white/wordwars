@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from './cn';
+import { useEscapeKey } from './useEscapeKey';
 
 /**
  * A full-screen modal layer, portalled to `document.body`.
@@ -36,18 +37,7 @@ interface OverlayProps {
 }
 
 export function Overlay({ children, onClose, label, className, dismissible = true }: OverlayProps) {
-  useEffect(() => {
-    if (!dismissible) return;
-
-    // Escape closes. Expected of every modal, and the only way out for someone
-    // navigating by keyboard.
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onClose();
-    };
-
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [dismissible, onClose]);
+  useEscapeKey(dismissible ? onClose : null);
 
   useEffect(() => {
     // The page behind a modal should not scroll under it.
@@ -69,6 +59,27 @@ export function Overlay({ children, onClose, label, className, dismissible = tru
       )}
       onClick={dismissible ? onClose : undefined}
     >
+      {/*
+        A visible way out, not only a keyboard one.
+
+        Escape and a backdrop click both close this, and neither is discoverable:
+        one is invisible and the other is a thing people learn to be afraid of,
+        because plenty of dialogs treat a stray click as consent. A cross in the
+        corner is the affordance everybody already knows.
+      */}
+      {dismissible && (
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="fixed right-5 top-5 z-10 grid h-9 w-9 place-items-center border border-line/60 bg-abyss/70 text-ink-dim transition-colors hover:border-line-bright hover:text-ink"
+        >
+          <span aria-hidden className="text-lg leading-none">
+            ×
+          </span>
+        </button>
+      )}
+
       {/* Stops a click inside the panel from reaching the dismissing backdrop. */}
       <div onClick={(event) => event.stopPropagation()} className="contents">
         {children}

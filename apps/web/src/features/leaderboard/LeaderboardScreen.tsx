@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { TopNav } from '@/features/landing/components/TopNav';
 import { Panel, PanelLabel } from '@/ui/Panel';
 import { cn } from '@/ui/cn';
+import { useEscapeKey } from '@/ui/useEscapeKey';
 import { useAuth } from '@/net/useConnection';
 import { API_BASE } from '@/net/serverUrl';
 
@@ -58,7 +60,12 @@ export function LeaderboardScreen() {
   const [category, setCategory] = useState('wins');
   const [period, setPeriod] = useState<string>('weekly');
   const [board, setBoard] = useState<Board | null>(null);
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
+
+  // Escape returns to the menu — the only key this game can bind, since every
+  // letter is combat input elsewhere in the app.
+  useEscapeKey(() => void navigate('/'));
 
   useEffect(() => {
     void fetch(`${API_BASE}/api/leaderboard/categories`)

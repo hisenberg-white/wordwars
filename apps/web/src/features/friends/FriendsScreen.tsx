@@ -4,6 +4,7 @@ import { TopNav } from '@/features/landing/components/TopNav';
 import { Panel, PanelLabel } from '@/ui/Panel';
 import { Button } from '@/ui/Button';
 import { cn } from '@/ui/cn';
+import { useEscapeKey } from '@/ui/useEscapeKey';
 import { useAuth } from '@/net/useConnection';
 import { authManager } from '@/net/AuthManager';
 import { connection } from '@/net/ConnectionManager';
@@ -36,6 +37,10 @@ export function FriendsScreen() {
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Escape returns to the menu — the only key this game can bind, since every
+  // letter is combat input elsewhere in the app.
+  useEscapeKey(() => void navigate('/'));
 
   const call = useCallback(async (path: string, body?: unknown) => {
     const token = authManager.token();

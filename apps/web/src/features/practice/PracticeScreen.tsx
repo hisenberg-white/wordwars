@@ -9,6 +9,7 @@ import { setAppPhase } from '@/store/appPhase';
 import { Button } from '@/ui/Button';
 import { Panel, PanelLabel } from '@/ui/Panel';
 import { cn } from '@/ui/cn';
+import { useEscapeKey } from '@/ui/useEscapeKey';
 import type { SoloStartPayload } from '@wordwars/shared';
 
 /**
@@ -45,6 +46,10 @@ export function PracticeScreen() {
   const navigate = useNavigate();
   const { identity } = useIdentity();
   const { room } = useRoom();
+
+  // Escape returns to the menu — the only key this game can bind, since every
+  // letter is combat input elsewhere in the app.
+  useEscapeKey(() => void navigate('/'));
 
   const [starting, setStarting] = useState<DifficultyId | null>(null);
   const [error, setError] = useState<string | null>(null);

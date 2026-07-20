@@ -1,5 +1,6 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { GameCanvas } from '@/game/GameCanvas';
+import { MatchExit } from './MatchExit';
 import { matchManager } from '@/net/MatchManager';
 import { useIdentity } from '@/net/useConnection';
 import { setAppPhase } from '@/store/appPhase';
@@ -38,6 +39,9 @@ export function MatchScreen() {
     <div className="relative h-screen w-full overflow-hidden bg-void">
       {/* z-0: the arena. Mounted once, never re-rendered. */}
       <GameCanvas className="absolute inset-0 grid place-items-center" />
+
+      {/* Always reachable: a fight you cannot leave is a trap. */}
+      <MatchExit live={view.status === 'live'} />
 
       {/* z-30: the opponent dropped. Sits above the HUD but below results,
           since a match that ends during a pause should show the verdict. */}

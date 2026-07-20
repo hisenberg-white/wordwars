@@ -1,7 +1,9 @@
+import { useNavigate } from 'react-router-dom';
 import { TopNav } from '@/features/landing/components/TopNav';
 import { Panel, PanelLabel } from '@/ui/Panel';
 import { Button } from '@/ui/Button';
 import { cn } from '@/ui/cn';
+import { useEscapeKey } from '@/ui/useEscapeKey';
 import { settingsManager, useSettings } from '@/settings/SettingsManager';
 import type { MotionPreference, QualityTier } from '@/settings/settings';
 
@@ -14,7 +16,12 @@ import type { MotionPreference, QualityTier } from '@/settings/settings';
  * who needed it.
  */
 export function SettingsScreen() {
+  const navigate = useNavigate();
   const settings = useSettings();
+
+  // Escape returns to the menu — the only key this game can bind, since every
+  // letter is combat input elsewhere in the app.
+  useEscapeKey(() => void navigate('/'));
   const set = (patch: Parameters<typeof settingsManager.update>[0]) =>
     settingsManager.update(patch);
 
@@ -99,6 +106,20 @@ export function SettingsScreen() {
           />
         </Panel>
 
+        <Panel className="p-6">
+          <PanelLabel>Keyboard</PanelLabel>
+          <p className="mt-2 text-xs leading-relaxed text-ink-faint">
+            Only Escape is bound. Every letter, digit and space is combat input, so a shortcut on
+            any of them would fire while you were simply playing.
+          </p>
+
+          <dl className="mt-4 space-y-2">
+            <Shortcut keys="Esc" what="Close a dialog, or go back to the menu" />
+            <Shortcut keys="Esc" what="In a match: open the leave menu" />
+            <Shortcut keys="Backspace" what="Repair the current word — the miss still counts" />
+          </dl>
+        </Panel>
+
         <div className="flex justify-end">
           <Button variant="ghost" size="sm" onClick={() => settingsManager.reset()}>
             Reset to defaults
@@ -106,6 +127,19 @@ export function SettingsScreen() {
         </div>
       </div>
     </Shell>
+  );
+}
+
+function Shortcut({ keys, what }: { keys: string; what: string }) {
+  return (
+    <div className="flex items-baseline gap-4">
+      <dt className="w-24 shrink-0">
+        <kbd className="border border-line/60 bg-abyss px-2 py-0.5 font-display text-[0.65rem] uppercase tracking-wider text-ink-dim">
+          {keys}
+        </kbd>
+      </dt>
+      <dd className="text-xs leading-snug text-ink-faint">{what}</dd>
+    </div>
   );
 }
 
